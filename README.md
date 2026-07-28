@@ -74,5 +74,23 @@
 
 \- Scikit-learn
 
+\## Completed Modules
+
+
+
+\### 1. Document Splitting and Embedding Pipeline
+
+
+
+Status: Completed ✅
+
+
+
+Implemented the first stage of RAG knowledge indexing pipeline.
+
+
+
+Workflow:
+
 
 
