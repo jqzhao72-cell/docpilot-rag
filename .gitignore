@@ -23,3 +23,5 @@ data/
 
 # Chroma database
 chroma_db/
+
+#.env
