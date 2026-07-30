@@ -1,18 +1,37 @@
-def build_prompt(question, contexts):
+def build_prompt(question, retrieved_docs):
     """
-    构造RAG Prompt
+    构建带引用信息的RAG Prompt
 
-    question:
-        用户问题
-
-    contexts:
-        检索到的文本列表
+    retrieved_docs:
+    [
+        {
+            "content": "...",
+            "source": "...",
+            "chunk_id": 0
+        }
+    ]
     """
 
 
-    context_text = "\n".join(
-        contexts
-    )
+    context_text = ""
+
+
+    for i, doc in enumerate(retrieved_docs):
+
+        context_text += f"""
+资料{i+1}:
+
+内容:
+{doc["content"]}
+
+来源:
+{doc["source"]}
+
+文本块:
+{doc["chunk_id"]}
+
+----------------
+"""
 
 
     prompt = f"""
@@ -20,22 +39,24 @@ def build_prompt(question, contexts):
 
 请严格根据提供的资料回答问题。
 
-如果资料中没有答案，
-请回答：
-"根据现有资料无法确定。"
+要求：
+
+1. 不要编造资料中没有的信息。
+2. 如果资料无法回答，请说明无法确定。
+3. 回答结束后，列出参考来源。
 
 
 资料:
-----------------
+
 {context_text}
-----------------
 
 
-问题:
+用户问题:
+
 {question}
 
 
-答案:
+请生成答案:
 """
 
 

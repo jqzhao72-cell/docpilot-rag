@@ -4,45 +4,36 @@ from rag.llm import DeepSeekLLM
 
 
 
-# 用户问题
-
 question = "员工一年有多少天年假？"
 
 
 
-# 1. 检索
+# 检索
 
 retriever = Retriever()
 
 
-results = retriever.search(
+docs = retriever.search(
     question,
     top_k=3
 )
 
 
-contexts = results["documents"][0]
 
-
-
-# 2. 构建Prompt
+# Prompt
 
 prompt = build_prompt(
     question,
-    contexts
+    docs
 )
 
 
-
-print("================")
-print("Prompt")
-print("================")
 
 print(prompt)
 
 
 
-# 3. 调用DeepSeek
+# LLM
 
 llm = DeepSeekLLM()
 
@@ -52,9 +43,8 @@ answer = llm.generate(
 )
 
 
-
-print("\n================")
-print("Answer")
+print("================")
+print("答案")
 print("================")
 
 print(answer)

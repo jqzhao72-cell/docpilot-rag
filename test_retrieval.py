@@ -14,7 +14,45 @@ results = retriever.search(
 
 
 print("================")
-print("完整结果")
+print("检索结果")
 print("================")
 
-print(results)
+
+for item in results:
+
+    print("----------------")
+
+    print(
+        "内容:"
+    )
+
+    print(
+        item["content"]
+    )
+
+
+    print(
+        "来源:"
+    )
+
+    print(
+        item["source"]
+    )
+
+
+    print(
+        "Chunk:"
+    )
+
+    print(
+        item["chunk_id"]
+    )
+
+
+    print(
+        "距离:"
+    )
+
+    print(
+        item["score"]
+    )
