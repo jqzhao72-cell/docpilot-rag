@@ -1,0 +1,205 @@
+[
+  {
+    "id": 1,
+    "question": "员工累计工作满1年不满10年，每年有多少天带薪年休假？",
+    "expected_answer": "5天",
+    "expected_source": "员工带薪年休假管理办法（公开通用模板.pdf",
+    "expected_keywords": [
+      "1年",
+      "10年",
+      "5天"
+    ]
+  },
+  {
+    "id": 2,
+    "question": "员工申请年休假需要提前多久提交？",
+    "expected_answer": "提前3个工作日",
+    "expected_source": "科技考勤休假管理细则.pdf",
+    "expected_keywords": [
+      "3个工作日",
+      "年休假"
+    ]
+  },
+  {
+    "id": 3,
+    "question": "员工申请3天及以上年休假需要谁审批？",
+    "expected_answer": "分管副总审批",
+    "expected_source": "科技考勤休假管理细则.pdf",
+    "expected_keywords": [
+      "3天",
+      "分管副总"
+    ]
+  },
+  {
+    "id": 4,
+    "question": "劳动合同期限1年以上不满3年的，试用期最长多久？",
+    "expected_answer": "不得超过2个月",
+    "expected_source": "劳动合同试用期管理办法（公开通用模板）.pdf",
+    "expected_keywords": [
+      "1年以上",
+      "3年",
+      "2个月"
+    ]
+  },
+  {
+    "id": 5,
+    "question": "正式员工主动辞职需要提前多少天书面通知企业？",
+    "expected_answer": "提前30日",
+    "expected_source": "员工离职管理办法（公开通用模板）.pdf",
+    "expected_keywords": [
+      "30日",
+      "书面"
+    ]
+  },
+  {
+    "id": 6,
+    "question": "试用期员工辞职需要提前多久通知企业？",
+    "expected_answer": "提前3日",
+    "expected_source": "员工离职管理办法（公开通用模板）.pdf",
+    "expected_keywords": [
+      "试用期",
+      "3日"
+    ]
+  },
+  {
+    "id": 7,
+    "question": "单笔费用1000元及以下由谁审批？",
+    "expected_answer": "部门负责人审批",
+    "expected_source": "费用报销分级审批管理办法（公开通用模板）.pdf",
+    "expected_keywords": [
+      "1000元",
+      "部门负责人"
+    ]
+  },
+  {
+    "id": 8,
+    "question": "单笔费用1000元以上5000元及以下需要经过哪些流程？",
+    "expected_answer": "部门负责人审批后，提交财务部门复核",
+    "expected_source": "费用报销分级审批管理办法（公开通用模板）.pdf",
+    "expected_keywords": [
+      "5000元",
+      "财务"
+    ]
+  },
+  {
+    "id": 9,
+    "question": "单笔金额5000元以上20000元及以下由谁最终审批？",
+    "expected_answer": "分管副总经理审批",
+    "expected_source": "科技有限公司财务支出分级审批执行细则（脱敏模拟企业制度）.pdf",
+    "expected_keywords": [
+      "20000元",
+      "分管副总"
+    ]
+  },
+  {
+    "id": 10,
+    "question": "单笔金额20000元以上由谁最终审批？",
+    "expected_answer": "总经理最终审批",
+    "expected_source": "科技有限公司财务支出分级审批执行细则（脱敏模拟企业制度）.pdf",
+    "expected_keywords": [
+      "20000元",
+      "总经理"
+    ]
+  },
+  {
+    "id": 11,
+    "question": "业务招待费单笔超过多少元需要提前提交招待申请？",
+    "expected_answer": "2000元",
+    "expected_source": "科技有限公司财务支出分级审批执行细则（脱敏模拟企业制度）.pdf",
+    "expected_keywords": [
+      "业务招待费",
+      "2000元"
+    ]
+  },
+  {
+    "id": 12,
+    "question": "企业信息资产在公开通用模板中分为哪几级？",
+    "expected_answer": "核心信息、重要信息、一般信息三级",
+    "expected_source": "企业信息安全管理总则（公开通用模板）.pdf",
+    "expected_keywords": [
+      "核心信息",
+      "重要信息",
+      "一般信息"
+    ]
+  },
+  {
+    "id": 13,
+    "question": "脱敏模拟制度中公司数据分为哪四级？",
+    "expected_answer": "绝密级、机密级、内部级、公开级",
+    "expected_source": "科技信息安全与数据保密管理规定.pdf",
+    "expected_keywords": [
+      "绝密级",
+      "机密级",
+      "内部级",
+      "公开级"
+    ]
+  },
+  {
+    "id": 14,
+    "question": "核心源代码属于什么数据级别？",
+    "expected_answer": "绝密级",
+    "expected_source": "科技信息安全与数据保密管理规定.pdf",
+    "expected_keywords": [
+      "核心源代码",
+      "绝密级"
+    ]
+  },
+  {
+    "id": 15,
+    "question": "员工可以把公司涉密信息上传到个人云盘吗？",
+    "expected_answer": "不可以",
+    "expected_source": "企业信息安全管理总则（公开通用模板）.pdf",
+    "expected_keywords": [
+      "个人云盘"
+    ]
+  },
+  {
+    "id": 16,
+    "question": "员工办公账号是否可以借给其他人使用？",
+    "expected_answer": "不可以，一人一号，禁止转借账号",
+    "expected_source": "科技信息安全与数据保密管理规定.pdf",
+    "expected_keywords": [
+      "一人一号",
+      "转借"
+    ]
+  },
+  {
+    "id": 17,
+    "question": "病假需要提供什么证明？",
+    "expected_answer": "二级以上医院诊断证明",
+    "expected_source": "科技考勤休假管理细则.pdf",
+    "expected_keywords": [
+      "二级以上",
+      "诊断证明"
+    ]
+  },
+  {
+    "id": 18,
+    "question": "公司标准工作时间是几点到几点？",
+    "expected_answer": "周一至周五9:00-18:00，午休1小时",
+    "expected_source": "科技考勤休假管理细则.pdf",
+    "expected_keywords": [
+      "9:00",
+      "18:00"
+    ]
+  },
+  {
+    "id": 19,
+    "question": "员工离职前需要完成哪些工作交接？",
+    "expected_answer": "工作文件、业务资料、办公物品、密钥权限、未完成事项等",
+    "expected_source": "员工离职管理办法（公开通用模板）.pdf",
+    "expected_keywords": [
+      "工作交接"
+    ]
+  },
+  {
+    "id": 20,
+    "question": "年休假未安排且经员工同意不休时，应如何补偿？",
+    "expected_answer": "按照该员工日工资收入的300%支付年休假工资报酬",
+    "expected_source": "员工带薪年休假管理办法（公开通用模板.pdf",
+    "expected_keywords": [
+      "300%",
+      "工资"
+    ]
+  }
+]
