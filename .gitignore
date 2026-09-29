@@ -20,3 +20,19 @@ data/
 
 # 日志
 *.log
+
+# Chroma database
+chroma_db/
+
+# Local databases and model weights
+app.db
+app.db-*
+models/
+
+# Test and build output
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
