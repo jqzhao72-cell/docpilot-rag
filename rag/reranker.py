@@ -1,117 +1,92 @@
+"""Batch reranking for Hybrid Retrieval candidates."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from time import perf_counter
+from typing import Any, Mapping, Sequence
+
+import numpy as np
 from sentence_transformers import CrossEncoder
 
 
-class Reranker:
-
-
-    def __init__(self):
-
-      from sentence_transformers import CrossEncoder
-import os
+DEFAULT_MODEL_PATH = Path("models/models/BAAI--bge-reranker-base/snapshots/master")
 
 
 class Reranker:
+    """Rerank Hybrid candidates with the local BGE cross-encoder."""
 
+    def __init__(
+        self,
+        model_path: str | Path = DEFAULT_MODEL_PATH,
+        batch_size: int = 8,
+    ) -> None:
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer")
+        resolved_path = Path(model_path).resolve()
+        if not resolved_path.is_dir():
+            raise FileNotFoundError(f"Reranker model directory not found: {resolved_path}")
 
-    def __init__(self):
-
-        model_path = os.path.abspath(
-            "./models/models/BAAI--bge-reranker-base/snapshots/master"
-        )
-
-
-        self.model = CrossEncoder(
-            model_path
-        )
-
-
-def rerank(
-    self,
-    query,
-    docs,
-    top_k=3
-):
-
-    # 如果Retriever没有召回任何文档
-    # 直接返回空列表
-    # 不再调用CrossEncoder
-    if not docs:
-        return []
-
-    # 后面保留你原来的代码
-
-        pairs = []
-
-
-        for doc in documents:
-
-            pairs.append(
-                [
-                    question,
-                    doc["content"]
-                ]
-            )
-
-
-        scores = self.model.predict(
-            pairs
-        )
-
-
-        for doc, score in zip(
-            documents,
-            scores
-        ):
-
-            doc["rerank_score"] = float(score)
-
-
-
-        documents.sort(
-            key=lambda x:x["rerank_score"],
-            reverse=True
-        )
-
-
-        return documents[:top_k]
+        started = perf_counter()
+        self.model = CrossEncoder(str(resolved_path))
+        self.model_load_time_ms = (perf_counter() - started) * 1000
+        self.model_path = resolved_path
+        self.model_name = "BAAI/bge-reranker-base"
+        self.batch_size = batch_size
 
     def rerank(
         self,
-        question,
-        documents,
-        top_k=3
-    ):
-
-        pairs = []
-
-
-        for doc in documents:
-
-            pairs.append(
-                [
-                    question,
-                    doc["content"]
-                ]
-            )
-
-
-        scores = self.model.predict(
-            pairs
-        )
-
-
-        for doc, score in zip(
-            documents,
-            scores
+        query: str,
+        candidates: Sequence[Mapping[str, Any]],
+        top_k: int = 5,
+        batch_size: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Batch-score pairs and return Top-K; positive rank change means promotion."""
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("query must be a non-empty string")
+        if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+            raise ValueError("top_k must be a positive integer")
+        effective_batch_size = self.batch_size if batch_size is None else batch_size
+        if (
+            isinstance(effective_batch_size, bool)
+            or not isinstance(effective_batch_size, int)
+            or effective_batch_size <= 0
         ):
+            raise ValueError("batch_size must be a positive integer")
+        if not candidates:
+            return []
 
-            doc["rerank_score"] = float(score)
+        prepared: list[dict[str, Any]] = []
+        pairs: list[tuple[str, str]] = []
+        for rrf_rank, candidate in enumerate(candidates, start=1):
+            item = dict(candidate)
+            text = item.get("text", item.get("content", ""))
+            if not isinstance(text, str):
+                text = str(text)
+            item["text"] = text
+            item.setdefault("dense_score", None)
+            item.setdefault("bm25_score", None)
+            item.setdefault("rrf_score", item.get("score"))
+            item["rrf_rank"] = rrf_rank
+            prepared.append(item)
+            pairs.append((query.strip(), text))
 
-
-        documents.sort(
-            key=lambda x:x["rerank_score"],
-            reverse=True
+        raw_scores = self.model.predict(
+            pairs,
+            batch_size=effective_batch_size,
+            show_progress_bar=False,
+            convert_to_numpy=True,
         )
+        scores = np.asarray(raw_scores).reshape(-1)
+        if len(scores) != len(prepared):
+            raise RuntimeError("Reranker returned an unexpected number of scores")
 
+        for item, score in zip(prepared, scores):
+            item["rerank_score"] = float(score)
 
-        return documents[:top_k]
+        prepared.sort(key=lambda item: (-item["rerank_score"], item["rrf_rank"]))
+        final_results = prepared[:top_k]
+        for final_rank, item in enumerate(final_results, start=1):
+            item["final_rank"] = final_rank
+            item["rank_change"] = item["rrf_rank"] - final_rank
+        return final_results
