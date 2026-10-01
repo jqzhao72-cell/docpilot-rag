@@ -4,13 +4,38 @@ from __future__ import annotations
 
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Mapping, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
 from sentence_transformers import CrossEncoder
 
 
 DEFAULT_MODEL_PATH = Path("models/models/BAAI--bge-reranker-base/snapshots/master")
+RerankerInputMode = Literal["text", "structured"]
+
+
+def build_reranker_text(
+    candidate: Mapping[str, Any],
+    input_mode: RerankerInputMode = "text",
+) -> str:
+    """Build the document side of a cross-encoder pair."""
+    text = candidate.get("text", candidate.get("content", ""))
+    if not isinstance(text, str):
+        text = str(text)
+    if input_mode == "text":
+        return text
+    if input_mode != "structured":
+        raise ValueError("input_mode must be 'text' or 'structured'")
+
+    section = candidate.get("section") or ""
+    subsection = candidate.get("subsection") or ""
+    chunk_type = candidate.get("chunk_type") or "unknown"
+    return (
+        f"Section: {section}\n"
+        f"Subsection: {subsection}\n"
+        f"Chunk type: {chunk_type}\n"
+        f"Text: {text}"
+    )
 
 
 class Reranker:
@@ -40,6 +65,7 @@ class Reranker:
         candidates: Sequence[Mapping[str, Any]],
         top_k: int = 5,
         batch_size: int | None = None,
+        input_mode: RerankerInputMode = "text",
     ) -> list[dict[str, Any]]:
         """Batch-score pairs and return Top-K; positive rank change means promotion."""
         if not isinstance(query, str) or not query.strip():
@@ -55,21 +81,24 @@ class Reranker:
             raise ValueError("batch_size must be a positive integer")
         if not candidates:
             return []
+        if input_mode not in {"text", "structured"}:
+            raise ValueError("input_mode must be 'text' or 'structured'")
 
         prepared: list[dict[str, Any]] = []
         pairs: list[tuple[str, str]] = []
         for rrf_rank, candidate in enumerate(candidates, start=1):
             item = dict(candidate)
-            text = item.get("text", item.get("content", ""))
-            if not isinstance(text, str):
-                text = str(text)
+            text = build_reranker_text(item, "text")
+            rerank_input = build_reranker_text(item, input_mode)
             item["text"] = text
             item.setdefault("dense_score", None)
             item.setdefault("bm25_score", None)
             item.setdefault("rrf_score", item.get("score"))
             item["rrf_rank"] = rrf_rank
+            item["rerank_input_mode"] = input_mode
+            item["rerank_input"] = rerank_input
             prepared.append(item)
-            pairs.append((query.strip(), text))
+            pairs.append((query.strip(), rerank_input))
 
         raw_scores = self.model.predict(
             pairs,
