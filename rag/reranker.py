@@ -13,7 +13,12 @@ from sentence_transformers import CrossEncoder
 
 DEFAULT_MODEL_PATH = Path("models/models/BAAI--bge-reranker-base/snapshots/master")
 RerankerInputMode = Literal["text", "structured"]
+QueryIntent = Literal["knowledge", "citation"]
 REFERENCE_LABEL = re.compile(r"\b(?:references|bibliography)\b", re.IGNORECASE)
+QUERY_CITATION_INTENT = re.compile(
+    r"\b(?:references?|citations?|cited|bibliograph(?:y|ies)|papers?|stud(?:y|ies))\b",
+    re.IGNORECASE,
+)
 NUMBERED_CITATION = re.compile(r"^\s*(?:\[\d{1,3}\]|\d{1,3}\.)\s*")
 AUTHOR_CITATION = re.compile(r"\bet\s+al\.", re.IGNORECASE)
 IDENTIFIER_CITATION = re.compile(
@@ -23,6 +28,13 @@ JOURNAL_CITATION = re.compile(
     r"(?:\b(?:19|20)\d{2}\s*;\s*\d+(?:\s*\(\d+\))?\s*:\s*\d+|"
     r"\b\d+\s*,\s*\d+[–-]\d+\s*\((?:19|20)\d{2}\))"
 )
+
+
+def detect_query_intent(query: str) -> QueryIntent:
+    """Classify explicit citation/reference requests; all other queries are knowledge QA."""
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("query must be a non-empty string")
+    return "citation" if QUERY_CITATION_INTENT.search(query) else "knowledge"
 
 
 def reference_signals(candidate: Mapping[str, Any]) -> tuple[str, ...]:
@@ -170,12 +182,24 @@ def second_stage_rank_fusion(
     reranked_results: Sequence[Mapping[str, Any]],
     k: int = 60,
     top_k: int = 5,
+    query: str | None = None,
+    reference_rank_penalty: int = 0,
 ) -> list[dict[str, Any]]:
-    """Fuse the original Hybrid rank and pure reranker rank with RRF."""
+    """Fuse Hybrid/reranker ranks, softly offsetting references for knowledge QA."""
     if isinstance(k, bool) or not isinstance(k, int) or k < 0:
         raise ValueError("k must be a non-negative integer")
     if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
         raise ValueError("top_k must be a positive integer")
+    if (
+        isinstance(reference_rank_penalty, bool)
+        or not isinstance(reference_rank_penalty, int)
+        or reference_rank_penalty < 0
+    ):
+        raise ValueError("reference_rank_penalty must be a non-negative integer")
+
+    query_intent: QueryIntent = (
+        "knowledge" if query is None else detect_query_intent(query)
+    )
 
     fused: dict[str, dict[str, Any]] = {}
     for hybrid_rank, result in enumerate(hybrid_results, start=1):
@@ -183,7 +207,17 @@ def second_stage_rank_fusion(
         item["rrf_rank"] = hybrid_rank
         item["is_reference"] = is_reference_candidate(item)
         item["reference_signals"] = reference_signals(item)
-        item["second_stage_rrf_score"] = 1.0 / (k + hybrid_rank)
+        applied_penalty = (
+            reference_rank_penalty
+            if query_intent == "knowledge" and item["is_reference"]
+            else 0
+        )
+        effective_rrf_rank = hybrid_rank + applied_penalty
+        item["query_intent"] = query_intent
+        item["configured_reference_rank_penalty"] = reference_rank_penalty
+        item["applied_reference_rank_penalty"] = applied_penalty
+        item["effective_rrf_rank"] = effective_rrf_rank
+        item["second_stage_rrf_score"] = 1.0 / (k + effective_rrf_rank)
         fused[str(item["id"])] = item
 
     seen: set[str] = set()
@@ -201,7 +235,11 @@ def second_stage_rank_fusion(
             if key not in {"final_rank", "rank_change"}
         })
         item["rerank_rank"] = rerank_rank
-        item["second_stage_rrf_score"] += 1.0 / (k + rerank_rank)
+        effective_rerank_rank = (
+            rerank_rank + item["applied_reference_rank_penalty"]
+        )
+        item["effective_rerank_rank"] = effective_rerank_rank
+        item["second_stage_rrf_score"] += 1.0 / (k + effective_rerank_rank)
 
     ranked = sorted(
         fused.values(),
