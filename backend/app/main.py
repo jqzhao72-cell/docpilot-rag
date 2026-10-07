@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.upload import router as upload_router
 from app.documents import router as documents_router
@@ -17,15 +18,13 @@ from app.models import (
 from app.permissions import get_user_by_id
 
 
-from rag.retrieval import Retriever
-from rag.reranker import Reranker
-from rag.prompt import build_prompt
-from rag.llm import DeepSeekLLM
+from rag.pipeline import PaperRAGPipeline
 
 
 from datetime import datetime
 
 import json
+import os
 
 
 # =========================
@@ -40,6 +39,24 @@ app = FastAPI(
 
     version="1.0.0"
 
+)
+
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -81,11 +98,7 @@ app.include_router(
 # 初始化RAG组件
 # =========================
 
-retriever = Retriever()
-
-reranker = Reranker()
-
-llm = DeepSeekLLM()
+paper_rag_pipeline = PaperRAGPipeline()
 
 
 # =========================
@@ -182,12 +195,10 @@ def chat(
 
         # 从SQLite获取真实用户
         # 不相信前端自己传role
-        user = get_user_by_id(
+        get_user_by_id(
             db,
             user_id
         )
-
-        user_role = user.role
 
 
         # 查询当前conversation
@@ -325,14 +336,9 @@ def chat(
     # 7. Chroma检索
     # =========================
 
-    docs = retriever.search(
-
+    pipeline_result = paper_rag_pipeline.answer(
         question,
-
-        user_role,
-
-        top_k=5
-
+        history_text=history_text,
     )
 
 
@@ -340,62 +346,37 @@ def chat(
     # 8. Reranker排序
     # =========================
 
-    docs = reranker.rerank(
-
-        question,
-
-        docs,
-
-        top_k=3
-
-    )
+    retrieval_results = pipeline_result["retrieval_results"]
 
 
     # =========================
     # 9. 构建Prompt
     # =========================
 
-    prompt = build_prompt(
-
-        question,
-
-        docs,
-
-        history_text
-
-    )
+    retrieval_by_id = {
+        str(result.get("id")): result
+        for result in retrieval_results
+    }
 
 
     # =========================
     # 10. DeepSeek生成答案
     # =========================
 
-    answer = llm.generate(
-
-        prompt
-
-    )
+    answer = pipeline_result["answer"]
 
 
     # =========================
     # 11. 整理引用来源
     # =========================
 
-    sources = [
-
-        {
-
-            "file":
-            doc["source"],
-
-            "chunk":
-            doc["chunk_id"]
-
-        }
-
-        for doc in docs
-
-    ]
+    sources = []
+    for source in pipeline_result["sources"]:
+        retrieval_result = retrieval_by_id.get(str(source.get("id")), {})
+        sources.append({
+            **source,
+            "text": retrieval_result.get("text", ""),
+        })
 
 
     sources_json = json.dumps(
@@ -526,6 +507,12 @@ def chat(
         answer,
 
         "sources":
-        sources
+        sources,
+
+        "retrieval_results":
+        retrieval_results,
+
+        "timings":
+        pipeline_result["timings"]
 
     }

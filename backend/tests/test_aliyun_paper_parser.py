@@ -6,16 +6,11 @@ from rag.ingestion.paper.cloud.aliyun_parser import (
 
 
 PDF_PATH = Path(
-    r"C:\Users\20111\Desktop\rag"
-    r"\manual-rag-demo\data\papers"
-    r"\journal.pone.0297260 (1).pdf"
+    "data/papers/journal.pone.0297260 (1).pdf"
 )
 
 OUTPUT_PATH = Path(
-    r"C:\Users\20111\Desktop\rag"
-    r"\manual-rag-demo\data"
-    r"\aliyun_results"
-    r"\journal_pone_0297260.json"
+    "data/aliyun_results/journal_pone_0297260.json"
 )
 
 
