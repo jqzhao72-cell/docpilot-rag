@@ -1,82 +1,68 @@
+"""Prompt construction for grounded DocPilot answers."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping, Sequence
+
+
+def _page_label(doc: Mapping[str, Any]) -> str:
+    page_start = doc.get("page_start")
+    page_end = doc.get("page_end")
+    if page_start is None and page_end is None:
+        return "unknown"
+    if page_end is None or page_start == page_end:
+        return str(page_start)
+    if page_start is None:
+        return str(page_end)
+    return f"{page_start}-{page_end}"
+
+
 def build_prompt(
-    question,
-    retrieved_docs,
-    history_text=""
-):
-    """
-    构建带短期会话记忆和引用信息的RAG Prompt
+    question: str,
+    retrieved_docs: Sequence[Mapping[str, Any]],
+    history_text: str = "",
+) -> str:
+    """Build a grounded prompt whose context numbering matches source citations."""
+    if not isinstance(question, str) or not question.strip():
+        raise ValueError("question must be a non-empty string")
 
-    retrieved_docs:
-    [
-        {
-            "content": "...",
-            "source": "...",
-            "chunk_id": 0
-        }
-    ]
-    """
+    context_blocks: list[str] = []
+    for index, doc in enumerate(retrieved_docs, start=1):
+        text = doc.get("text", doc.get("content", ""))
+        context_blocks.append(
+            "\n".join(
+                (
+                    f"[{index}]",
+                    f"source: {doc.get('source') or 'unknown'}",
+                    f"page: {_page_label(doc)}",
+                    f"section: {doc.get('section') or 'unknown'}",
+                    f"chunk_type: {doc.get('chunk_type') or 'unknown'}",
+                    "text:",
+                    str(text or ""),
+                )
+            )
+        )
 
-    context_text = ""
+    context_text = "\n\n---\n\n".join(context_blocks) or "No context was retrieved."
+    history_section = history_text.strip() if history_text else "None"
 
+    return f"""You are DocPilot, a document-grounded question-answering assistant.
 
-    # =========================
-    # 1. 拼接RAG检索到的企业资料
-    # =========================
+Instructions:
+1. Answer the user's question using only the numbered contexts below.
+2. Cite supporting contexts inline using exactly [1], [2], and so on. Never write [Context 1]. A citation number must match the corresponding context number.
+3. Do not invent facts, citations, page numbers, sections, or sources.
+4. If the contexts do not contain enough evidence, explicitly say that the answer cannot be determined from the provided context and state what evidence is missing.
+5. Keep the answer focused and use the same language as the user's question.
+6. Conversation history may clarify the question, but it is not evidence and must not be cited.
 
-    for i, doc in enumerate(retrieved_docs):
+Conversation history:
+{history_section}
 
-        context_text += f"""
-资料{i+1}:
-
-内容:
-{doc["content"]}
-
-来源:
-{doc["source"]}
-
-文本块:
-{doc["chunk_id"]}
-
-----------------
-"""
-
-
-    # =========================
-    # 2. 构建最终Prompt
-    # =========================
-
-    prompt = f"""
-你是一个企业知识库助手。
-
-请结合历史对话理解用户当前问题，
-并严格根据提供的企业资料回答。
-
-要求：
-
-1. 历史对话只用于理解用户当前问题的上下文。
-2. 企业事实必须以提供的企业资料为依据。
-3. 不要编造资料中没有的信息。
-4. 如果资料无法回答，请说明无法根据当前资料确定。
-5. 回答结束后，列出参考来源。
-
-
-历史对话:
-
-{history_text}
-
-
-企业资料:
-
+Retrieved contexts:
 {context_text}
 
+User question:
+{question.strip()}
 
-当前用户问题:
-
-{question}
-
-
-请生成答案:
-"""
-
-
-    return prompt
+Answer:"""
