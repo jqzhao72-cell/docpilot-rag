@@ -1,249 +1,221 @@
-"""RBAC regression tests that do not touch the real app.db or chroma_db."""
-
+"""HTTP authorization and persistence regression tests: isolated SQLite and fake RAG."""
+import json
+import tempfile
 import unittest
+from contextlib import nullcontext
+from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
-
-from fastapi import HTTPException
-from sqlalchemy import create_engine
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.database import Base
-from app.models import User
-from app.permissions import (
-    can_delete_document,
-    can_upload_document,
-    get_allowed_document_roles,
-    get_retrieval_where,
-    normalize_user_role,
-)
-from app.users import RoleUpdateRequest, register, update_user_role
-# Import endpoints without connecting to the real knowledge base.
-with patch('chromadb.PersistentClient'):
-    from app.documents import delete_document, list_documents
-
+from app.main import app
+from app.database import Base, get_db
+from app.models import User, AuthSession, Conversation, Message, ChatHistory
+from app.auth import hash_password, token_digest, verify_password
+from app.migrations import upgrade
+from app.permissions import get_allowed_document_roles, can_upload_document, can_delete_document
 
 class PermissionMatrixTests(unittest.TestCase):
-    def test_document_access_matrix(self):
-        expected = {
-            "employee": {"employee"},
-            "hr": {"employee", "hr"},
-            "admin": {"employee", "hr", "admin"},
-        }
-        for user_role, allowed in expected.items():
-            with self.subTest(user_role=user_role):
-                self.assertEqual(set(get_allowed_document_roles(user_role)), allowed)
+    def test_role_matrix(self):
+        for role, allowed in [("employee", ["employee"]), ("hr", ["employee", "hr"]),
+                              ("admin", ["employee", "hr", "admin"])]:
+            self.assertEqual(get_allowed_document_roles(role), allowed)
+            for doc_role in ("employee", "hr", "admin"):
+                expected = role != "employee" and doc_role in allowed
+                self.assertEqual(can_upload_document(role, doc_role), expected)
+                self.assertEqual(can_delete_document(role, doc_role), expected)
 
-    def test_upload_matrix(self):
-        expected = {
-            "employee": set(),
-            "hr": {"employee", "hr"},
-            "admin": {"employee", "hr", "admin"},
-        }
-        for user_role, allowed in expected.items():
-            for document_role in ("employee", "hr", "admin"):
-                with self.subTest(user_role=user_role, document_role=document_role):
-                    self.assertEqual(
-                        can_upload_document(user_role, document_role),
-                        document_role in allowed,
-                    )
-
-    def test_delete_matrix(self):
-        expected = {
-            "employee": set(),
-            "hr": {"employee", "hr"},
-            "admin": {"employee", "hr", "admin"},
-        }
-        for user_role, allowed in expected.items():
-            for document_role in ("employee", "hr", "admin"):
-                with self.subTest(user_role=user_role, document_role=document_role):
-                    self.assertEqual(
-                        can_delete_document(user_role, document_role),
-                        document_role in allowed,
-                    )
-
-    def test_chroma_retrieval_filters(self):
-        self.assertEqual(get_retrieval_where("employee"), {"role": "employee"})
-        self.assertEqual(
-            get_retrieval_where("hr"),
-            {"role": {"$in": ["employee", "hr"]}},
-        )
-        self.assertIsNone(get_retrieval_where("admin"))
-
-    def test_legacy_user_role_is_least_privilege(self):
-        self.assertEqual(normalize_user_role("user"), "employee")
-
-
-class DatabaseTestBase:
+class ApiTests(unittest.TestCase):
     def setUp(self):
-        engine = create_engine(
-            "sqlite://",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-        Base.metadata.create_all(engine)
-        self.session_factory = sessionmaker(bind=engine)
+        self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        @event.listens_for(self.engine, "connect")
+        def foreign_keys(connection, _):
+            connection.execute("PRAGMA foreign_keys=ON")
+        Base.metadata.create_all(self.engine)
+        self.factory = sessionmaker(bind=self.engine)
+        with self.factory() as db:
+            db.add_all([User(id=i, username=role, password=hash_password("password123"), role=role)
+                        for i, role in enumerate(("employee", "hr", "admin"), 1)])
+            db.commit()
+        def db_override():
+            with self.factory() as db:
+                yield db
+        app.dependency_overrides[get_db] = db_override
+        self.client = TestClient(app)
+        self.headers = {}
+        for role in ("employee", "hr", "admin"):
+            response = self.client.post("/login", json={"username": role, "password": "password123"})
+            self.assertEqual(response.status_code, 200)
+            self.headers[role] = {"Authorization": "Bearer " + response.json()["access_token"]}
+        self.lock_patch = patch("app.knowledge.knowledge_lock", lambda: nullcontext())
+        self.doc_lock_patch = patch("app.documents.knowledge_lock", lambda: nullcontext())
+        self.lock_patch.start()
+        self.doc_lock_patch.start()
 
-        db = self.session_factory()
-        db.add_all(
-            [
-                User(username="employee_user", password="pw", role="employee"),
-                User(username="hr_user", password="pw", role="hr"),
-                User(username="admin_user", password="pw", role="admin"),
-            ]
-        )
-        db.commit()
-        self.ids = {user.username: user.id for user in db.query(User).all()}
-        db.close()
+    def tearDown(self):
+        self.lock_patch.stop()
+        self.doc_lock_patch.stop()
+        app.dependency_overrides.clear()
+        self.client.close()
+        self.engine.dispose()
 
+    def conversation(self, role="employee"):
+        response = self.client.post("/conversations", json={"title": "test"}, headers=self.headers[role])
+        self.assertEqual(response.status_code, 201)
+        return response.json()["id"]
 
-class UserApiSecurityTests(DatabaseTestBase, unittest.TestCase):
+    def test_all_sensitive_endpoints_require_bearer(self):
+        calls = [("get", "/users/me", {}), ("get", "/users", {}), ("get", "/history", {}),
+                 ("get", "/admin/history", {}), ("get", "/documents?user_id=3", {}),
+                 ("get", "/conversations", {}), ("get", "/conversations/1/messages", {}),
+                 ("post", "/conversations", {"json": {"title": "forged"}}),
+                 ("post", "/chat", {"json": {"question": "x", "conversation_id": 1}}),
+                 ("put", "/users/1/role", {"json": {"role": "admin"}}),
+                 ("delete", "/documents/private.pdf?user_id=3", {}),
+                 ("get", "/documents/private.pdf/content", {}),
+                 ("get", "/documents/private.pdf/download", {}),
+                 ("post", "/documents", {"files": {"file": ("x.txt", b"hello")}})]
+        for method, url, args in calls:
+            with self.subTest(url=url):
+                self.assertEqual(getattr(self.client, method)(url, **args).status_code, 401)
 
-    def test_public_registration_ignores_admin_role(self):
-        with patch("app.users.SessionLocal", self.session_factory):
-            result = register(
-                {"username": "forged_admin", "password": "pw", "role": "admin"}
-            )
+    def test_register_hashes_and_does_not_allow_role_or_identity(self):
+        self.assertEqual(self.client.post("/register", json={"username": "x", "password": "password123", "role": "admin"}).status_code, 422)
+        response = self.client.post("/register", json={"username": "new", "password": "password123"})
+        self.assertEqual(response.status_code, 201)
+        with self.factory() as db:
+            user = db.get(User, response.json()["user_id"])
+            self.assertEqual(user.role, "employee")
+            self.assertNotEqual(user.password, "password123")
+            self.assertTrue(verify_password("password123", user.password))
+        self.assertEqual(self.client.post("/register", json={"username": "new", "password": "password123"}).status_code, 409)
+        self.assertEqual(self.client.post("/login", json={"username": "employee", "password": "wrong"}).status_code, 401)
+        self.assertEqual(self.client.post("/conversations", json={"user_id": 3}, headers=self.headers["employee"]).status_code, 422)
 
-        db = self.session_factory()
-        created = db.query(User).filter(User.id == result["user_id"]).one()
-        self.assertEqual(created.role, "employee")
-        db.close()
+    def test_expiry_logout_and_role_revocation(self):
+        headers = self.headers["employee"]
+        self.assertEqual(self.client.post("/logout", headers=headers).status_code, 204)
+        self.assertEqual(self.client.get("/users/me", headers=headers).status_code, 401)
+        with self.factory() as db:
+            token = self.headers["hr"]["Authorization"].split()[1]
+            db.get(AuthSession, token_digest(token)).expires_at = datetime.utcnow() - timedelta(seconds=1)
+            db.commit()
+        self.assertEqual(self.client.get("/users/me", headers=self.headers["hr"]).status_code, 401)
 
-    def test_non_admin_cannot_change_role(self):
-        request = RoleUpdateRequest(
-            operator_user_id=self.ids["hr_user"],
-            role="hr",
-        )
-        with patch("app.users.SessionLocal", self.session_factory):
-            with self.assertRaises(HTTPException) as raised:
-                update_user_role(self.ids["employee_user"], request)
-        self.assertEqual(raised.exception.status_code, 403)
+    def test_admin_users_and_role_update(self):
+        self.assertEqual(self.client.get("/users", headers=self.headers["employee"]).status_code, 403)
+        users = self.client.get("/users", headers=self.headers["admin"]).json()
+        self.assertEqual(users["total"], 3)
+        self.assertNotIn("password", users["items"][0])
+        self.assertEqual(self.client.put("/users/1/role", json={"role": "admin"}, headers=self.headers["hr"]).status_code, 403)
+        self.assertEqual(self.client.put("/users/1/role", json={"role": "admin", "operator_user_id": 3}, headers=self.headers["employee"]).status_code, 403)
+        self.assertEqual(self.client.put("/users/1/role", json={"role": "hr"}, headers=self.headers["admin"]).status_code, 200)
+        self.assertEqual(self.client.get("/users/me", headers=self.headers["employee"]).status_code, 401)
+        self.assertEqual(self.client.put("/users/3/role", json={"role": "employee"}, headers=self.headers["admin"]).status_code, 409)
 
-    def test_admin_can_promote_employee_to_hr(self):
-        request = RoleUpdateRequest(
-            operator_user_id=self.ids["admin_user"],
-            role="hr",
-        )
-        with patch("app.users.SessionLocal", self.session_factory):
-            result = update_user_role(self.ids["employee_user"], request)
-        self.assertEqual(result["new_role"], "hr")
+    def test_ownership_messages_chat_rename_delete(self):
+        cid = self.conversation()
+        for method, url, args in [
+            ("get", f"/conversations/{cid}/messages", {}),
+            ("patch", f"/conversations/{cid}", {"json": {"title": "other"}}),
+            ("delete", f"/conversations/{cid}", {}),
+            ("post", "/chat", {"json": {"question": "x", "conversation_id": cid}}),
+        ]:
+            with self.subTest(method=method):
+                self.assertEqual(getattr(self.client, method)(url, headers=self.headers["hr"], **args).status_code, 404)
+        self.assertEqual(self.client.get("/conversations", headers=self.headers["hr"]).json(), [])
+        self.assertEqual(self.client.patch(f"/conversations/{cid}", json={"title": "renamed"}, headers=self.headers["employee"]).status_code, 200)
+        self.assertEqual(self.client.delete(f"/conversations/{cid}", headers=self.headers["employee"]).status_code, 204)
 
-    def test_role_update_rejects_invalid_role(self):
-        request = RoleUpdateRequest(
-            operator_user_id=self.ids["admin_user"],
-            role="superadmin",
-        )
-        with patch("app.users.SessionLocal", self.session_factory):
-            with self.assertRaises(HTTPException) as raised:
-                update_user_role(self.ids["employee_user"], request)
-        self.assertEqual(raised.exception.status_code, 400)
+    def test_chat_atomic_history_single_source_and_error_rollback(self):
+        cid = self.conversation()
+        payload = {"question": "hello", "conversation_id": cid}
+        with patch("app.knowledge.answer_question", side_effect=RuntimeError("offline")):
+            self.assertEqual(self.client.post("/chat", json=payload, headers=self.headers["employee"]).status_code, 503)
+        with self.factory() as db:
+            self.assertEqual(db.query(Message).count(), 0)
+        result = {"answer": "answer", "sources": [], "retrieval_results": [], "timings": {"total_ms": 1}}
+        with patch("app.knowledge.answer_question", return_value=result) as answer:
+            self.assertEqual(self.client.post("/chat", json=payload, headers=self.headers["employee"]).status_code, 200)
+            self.assertEqual(answer.call_args.args[1:3], ("company", "employee"))
+        with self.factory() as db:
+            self.assertEqual(db.query(Message).count(), 2)
+            self.assertEqual(db.query(ChatHistory).count(), 0)
+        history = self.client.get("/history", headers=self.headers["employee"]).json()
+        self.assertEqual(history[0]["question"], "hello")
+        self.assertIsInstance(history[0]["sources"], list)
+        self.assertEqual(self.client.get("/history", headers=self.headers["hr"]).json(), [])
+        self.assertEqual(self.client.get("/admin/history", headers=self.headers["hr"]).status_code, 403)
+        self.assertEqual(len(self.client.get("/admin/history", headers=self.headers["admin"]).json()), 1)
+        self.client.delete(f"/conversations/{cid}", headers=self.headers["employee"])
+        self.assertEqual(self.client.get("/history", headers=self.headers["employee"]).json(), [])
 
-    def test_admin_gets_not_found_for_missing_target(self):
-        request = RoleUpdateRequest(
-            operator_user_id=self.ids["admin_user"],
-            role="hr",
-        )
-        with patch("app.users.SessionLocal", self.session_factory):
-            with self.assertRaises(HTTPException) as raised:
-                update_user_role(999999, request)
-        self.assertEqual(raised.exception.status_code, 404)
+    def test_documents_are_filtered_and_employee_cannot_upload_delete(self):
+        chunks = [{"id": str(i), "source": role + ".txt", "role": role, "text": role}
+                  for i, role in enumerate(("employee", "hr", "admin"))]
+        with patch("app.documents.read_chunks", return_value=chunks):
+            docs = self.client.get("/documents", headers=self.headers["employee"]).json()
+            self.assertEqual([x["filename"] for x in docs], ["employee.txt"])
+        self.assertEqual(self.client.post("/documents", headers=self.headers["employee"],
+                         files={"file": ("x.txt", b"hello")}).status_code, 403)
+        with patch("app.knowledge.read_chunks", return_value=chunks):
+            self.assertEqual(self.client.get("/documents/admin.txt/content", headers=self.headers["employee"]).status_code, 404)
+            self.assertEqual(self.client.delete("/documents/employee.txt", headers=self.headers["employee"]).status_code, 403)
+            self.assertEqual(self.client.get("/documents/employee.txt/content", headers=self.headers["employee"]).json()["chunks"][0]["text"], "employee")
 
+    def test_revoked_session_during_generation_cannot_save_or_return_answer(self):
+        cid = self.conversation()
+        def revoke(*args):
+            with self.factory() as db:
+                db.query(AuthSession).filter_by(user_id=1).delete()
+                db.commit()
+            return {"answer": "must not be returned", "sources": [], "timings": {"total_ms": 1}}
+        with patch("app.knowledge.answer_question", side_effect=revoke):
+            response = self.client.post("/chat", json={"question": "hello", "conversation_id": cid},
+                                        headers=self.headers["employee"])
+        self.assertEqual(response.status_code, 401)
+        with self.factory() as db:
+            self.assertEqual(db.query(Message).count(), 0)
 
-class FakeDocumentCollection:
-    def __init__(self, metadatas):
-        self.metadatas = metadatas
-        self.deleted = False
+    def test_openapi_declares_bearer_for_every_protected_operation(self):
+        schema = self.client.get("/openapi.json").json()
+        self.assertEqual(schema["components"]["securitySchemes"]["HTTPBearer"]["scheme"], "bearer")
+        for path, operations in schema["paths"].items():
+            if path in ("/", "/login", "/register"):
+                continue
+            for operation in operations.values():
+                self.assertIn({"HTTPBearer": []}, operation["security"])
 
-    def get(self, **kwargs):
-        where = kwargs.get("where")
-        if where:
-            selected = [
-                meta
-                for meta in self.metadatas
-                if meta.get("source") == where.get("source")
-            ]
-        else:
-            selected = self.metadatas
-        return {"metadatas": selected}
-
-    def delete(self, **_kwargs):
-        self.deleted = True
-
-
-class DocumentEndpointTests(DatabaseTestBase, unittest.TestCase):
-    def test_list_hides_inaccessible_documents_and_supports_legacy_metadata(self):
-        fake_collection = FakeDocumentCollection(
-            [
-                {"source": "employee.pdf", "role": "employee"},
-                {"source": "hr.pdf", "role": "hr"},
-                {"source": "admin.pdf", "role": "admin"},
-                {"source": "legacy.pdf"},
-            ]
-        )
-        with (
-            patch("app.documents.SessionLocal", self.session_factory),
-            patch("app.documents.collection", fake_collection),
-        ):
-            employee_docs = list_documents(self.ids["employee_user"])
-            hr_docs = list_documents(self.ids["hr_user"])
-            admin_docs = list_documents(self.ids["admin_user"])
-
-        self.assertEqual(
-            {item["filename"] for item in employee_docs},
-            {"employee.pdf", "legacy.pdf"},
-        )
-        self.assertEqual(
-            {item["filename"] for item in hr_docs},
-            {"employee.pdf", "hr.pdf", "legacy.pdf"},
-        )
-        self.assertEqual(
-            {item["filename"] for item in admin_docs},
-            {"employee.pdf", "hr.pdf", "admin.pdf", "legacy.pdf"},
-        )
-
-    def test_delete_checks_permission_before_mutation(self):
-        cases = [
-            ("employee_user", "employee", 403, False),
-            ("hr_user", "admin", 403, False),
-            ("hr_user", "employee", 200, True),
-            ("hr_user", "hr", 200, True),
-            ("admin_user", "admin", 200, True),
-        ]
-        for username, document_role, expected_status, should_delete in cases:
-            fake_collection = FakeDocumentCollection(
-                [{"source": "permission-test-nonexistent.pdf", "role": document_role}]
-            )
-            with (
-                self.subTest(username=username, document_role=document_role),
-                patch("app.documents.SessionLocal", self.session_factory),
-                patch("app.documents.collection", fake_collection),
-            ):
-                try:
-                    delete_document(
-                        "permission-test-nonexistent.pdf",
-                        self.ids[username],
-                    )
-                    actual_status = 200
-                except HTTPException as error:
-                    actual_status = error.status_code
-                self.assertEqual(actual_status, expected_status)
-                self.assertEqual(fake_collection.deleted, should_delete)
-
-    def test_delete_missing_document_returns_not_found_without_mutation(self):
-        fake_collection = FakeDocumentCollection([])
-        with (
-            patch("app.documents.SessionLocal", self.session_factory),
-            patch("app.documents.collection", fake_collection),
-            self.assertRaises(HTTPException) as raised,
-        ):
-            delete_document(
-                "permission-test-nonexistent.pdf",
-                self.ids["admin_user"],
-            )
-        self.assertEqual(raised.exception.status_code, 404)
-        self.assertFalse(fake_collection.deleted)
-
+class MigrationTests(unittest.TestCase):
+    def test_legacy_import_hashing_backup_and_idempotence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "app.db"
+            engine = create_engine("sqlite:///" + path.as_posix())
+            Base.metadata.create_all(engine)
+            with sessionmaker(bind=engine)() as db:
+                db.add(User(id=1, username="old", password="legacy", role="user"))
+                db.flush()
+                db.add(Conversation(id=1, user_id=1, title="old"))
+                db.flush()
+                db.add_all([Message(conversation_id=1, role="user", content="q"),
+                            Message(conversation_id=1, role="assistant", content="a"),
+                            ChatHistory(user_id=1, session_id="1", question="q", answer="a"),
+                            ChatHistory(user_id=1, session_id="old-session", question="q2", answer="a2")])
+                db.commit()
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE conversations DROP COLUMN knowledge_base"))
+            upgrade(engine)
+            upgrade(engine)
+            with sessionmaker(bind=engine)() as db:
+                self.assertEqual(db.query(Message).count(), 4)
+                self.assertEqual(db.query(ChatHistory).count(), 2)
+                self.assertEqual(db.get(User, 1).role, "employee")
+                self.assertTrue(verify_password("legacy", db.get(User, 1).password))
+                self.assertEqual(db.get(Conversation, 1).knowledge_base, "paper")
+            self.assertEqual(len(list((Path(directory) / "backups").glob("*.sqlite3"))), 1)
+            engine.dispose()
 
 if __name__ == "__main__":
     unittest.main()

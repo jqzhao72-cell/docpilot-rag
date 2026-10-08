@@ -1,16 +1,7 @@
-from app.database import Base, engine
+"""Create/upgrade the application database, backing up existing data first."""
+from app.database import engine
+from app.migrations import upgrade
 
-from app.models import (
-    User,
-    ChatHistory,
-    Conversation,
-    Message
-)
-
-
-Base.metadata.create_all(
-    bind=engine
-)
-# 根据这些模型，在 engine 连接的数据库里创建对应表。
-
-print("数据库创建完成")
+if __name__ == "__main__":
+    upgrade(engine)
+    print("数据库初始化/迁移完成；原数据库备份位于 backend/backups（如适用）。")

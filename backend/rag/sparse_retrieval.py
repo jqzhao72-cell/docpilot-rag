@@ -45,11 +45,14 @@ class BM25Retriever:
         chunks_path: str | Path = DEFAULT_CHUNKS_PATH,
         k1: float = 1.5,
         b: float = 0.75,
+        chunks: Sequence[dict[str, Any]] | None = None,
     ) -> None:
         if k1 <= 0 or not 0 <= b <= 1:
             raise ValueError("BM25 requires k1 > 0 and 0 <= b <= 1")
-        payload = json.loads(Path(chunks_path).read_text(encoding="utf-8"))
-        self.chunks: Sequence[dict[str, Any]] = payload["chunks"]
+        # Application adapters may provide a permission-filtered live corpus.
+        self.chunks: Sequence[dict[str, Any]] = chunks if chunks is not None else json.loads(
+            Path(chunks_path).read_text(encoding="utf-8")
+        )["chunks"]
         if not self.chunks:
             raise ValueError("paper chunk corpus is empty")
         self.k1 = k1
@@ -111,7 +114,7 @@ class BM25Retriever:
             chunk = self.chunks[index]
             global_index = chunk.get("global_chunk_index", index)
             results.append({
-                "id": f"paper-{global_index}",
+                "id": chunk.get("id", f"paper-{global_index}"),
                 "text": chunk.get("text", ""),
                 "source": chunk.get("source"),
                 "chunk_type": chunk.get("chunk_type"),

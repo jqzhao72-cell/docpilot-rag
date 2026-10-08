@@ -1,122 +1,32 @@
-from fastapi import APIRouter
+"""History is a read model of messages, never a second write destination."""
+from fastapi import APIRouter, Depends, Query
+from app.auth import get_current_user, require_admin
+from app.database import get_db
+from app.models import Conversation, Message
+from app.conversations import parse_sources
+from app.schemas import HistoryResponse
 
-from app.database import SessionLocal
-from app.models import ChatHistory
+router = APIRouter(tags=["历史"])
 
+def history_records(db, user_id=None):
+    query = db.query(Message, Conversation).join(Conversation, Conversation.id == Message.conversation_id)
+    if user_id is not None:
+        query = query.filter(Conversation.user_id == user_id)
+    result, pending = [], {}
+    for message, conversation in query.order_by(Message.created_time, Message.id):
+        if message.role == "user":
+            pending[conversation.id] = message.content
+        elif message.role == "assistant" and conversation.id in pending:
+            result.append({"id": message.id, "conversation_id": conversation.id,
+                           "user_id": conversation.user_id, "question": pending.pop(conversation.id),
+                           "answer": message.content, "sources": parse_sources(message.sources),
+                           "created_time": message.created_time})
+    return list(reversed(result))
 
+@router.get("/history", response_model=list[HistoryResponse])
+def get_history(user=Depends(get_current_user), db=Depends(get_db)):
+    return history_records(db, user.id)
 
-router = APIRouter()
-
-
-
-# =====================
-# 查询全部历史
-# =====================
-
-@router.get("/history")
-def get_history():
-
-
-    db = SessionLocal()
-
-
-    records = db.query(
-        ChatHistory
-    ).order_by(
-        ChatHistory.created_time.desc()
-    ).all()
-
-
-
-    result = []
-
-
-    for record in records:
-
-        result.append({
-
-            "id":
-            record.id,
-
-            "user_id":
-            record.user_id,
-
-            "question":
-            record.question,
-
-            "answer":
-            record.answer,
-
-            "sources":
-            record.sources,
-
-            "created_time":
-            str(record.created_time)
-
-        })
-
-
-    db.close()
-
-
-    return result
-
-
-
-
-# =====================
-# 查询指定用户历史
-# =====================
-
-@router.get("/history/user/{user_id}")
-def get_user_history(
-    user_id:int
-):
-
-
-    db = SessionLocal()
-
-
-    records = db.query(
-        ChatHistory
-    ).filter(
-        ChatHistory.user_id == user_id
-    ).order_by(
-        ChatHistory.created_time.desc()
-    ).all()
-
-
-
-    result=[]
-
-
-    for record in records:
-
-
-        result.append({
-
-            "id":
-            record.id,
-
-            "user_id":
-            record.user_id,
-
-            "question":
-            record.question,
-
-            "answer":
-            record.answer,
-
-            "sources":
-            record.sources,
-
-            "created_time":
-            str(record.created_time)
-
-        })
-
-
-    db.close()
-
-
-    return result
+@router.get("/admin/history", response_model=list[HistoryResponse])
+def get_all_history(user_id: int | None = Query(None), user=Depends(require_admin), db=Depends(get_db)):
+    return history_records(db, user_id)

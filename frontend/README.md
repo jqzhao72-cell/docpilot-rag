@@ -2,6 +2,8 @@
 
 正式前端使用 Vue 3、Vite、JavaScript、Vue Router、Pinia、Axios 和 CSS。它只负责交互与状态展示，业务数据全部来自 FastAPI。
 
+认证凭证保存于 sessionStorage，请求统一携带 Authorization: Bearer；导航时从 /users/me 获取当前身份。升级后需重新登录。用户管理路由仅 admin 可见，其他角色限制仍由后端执行。文档页可切换企业/论文库、查看正文；企业文件可下载。Chat 在新建会话时选择知识库。完整接口与权限说明见 [整改记录](../docs/api-remediation.md)。
+
 ## 启动
 
 先在另一个终端启动后端：

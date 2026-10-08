@@ -1,6 +1,6 @@
 # Backend Scripts
 
-`scripts/` 只保存人工执行入口、诊断工具和回归脚本。可复用业务逻辑应放在 `rag/` 或 `app/`，而不是脚本中。
+`scripts/` 只保存建库、模型准备、数据库初始化和运维诊断入口。检索、重排和完整 RAG 评估已迁入 [evaluation/](../evaluation/README.md)。可复用业务逻辑应放在 `rag/` 或 `app/`，而不是脚本中。
 
 ## 分类
 
@@ -8,8 +8,7 @@
 - `ingest.py`、`rebuild_clean_*.py`：文档解析与索引构建。
 - `download_reranker*.py`：本地模型准备。
 - `diagnostics/`：SQLite、Chroma、用户和历史只读检查。
-- `test_paper_*.py`、`test_hybrid_*.py`：需要真实模型和索引的手工回归。
-- `diagnose_paper_reranker.py`：Reranker 输入和排序诊断。
+- 需要真实模型的检索/重排/RAG 检查：见 `evaluation/retrieval/`、`evaluation/benchmarks/`、`evaluation/rag/`；单元测试继续在 `tests/`。
 
 ## 运行方式
 
@@ -17,7 +16,6 @@
 
 ```powershell
 ..\.venv\Scripts\python.exe -m scripts.init_db
-..\.venv\Scripts\python.exe -m scripts.test_hybrid_retrieval
 ..\.venv\Scripts\python.exe -m scripts.diagnostics.check_chroma
 ```
 

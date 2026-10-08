@@ -1,0 +1,615 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "paper_retrieval_eval",
+  "version": "0.1.0-candidate",
+  "status": "candidate_pending_review",
+  "created_on": "2026-10-08",
+  "language": "zh-CN",
+  "corpus": {
+    "path": "data/evaluation/clean_paper_chunks.json",
+    "sha256": "2e0a33b20eeb448bf35bce9a7f0c2b0fb870d169fa64eaf2ea2250d3eaf6d5eb",
+    "chunk_count": 940,
+    "collection_name": "paper_docs_bge_m3",
+    "id_mapping": "paper-{global_chunk_index}; all 940 IDs and exact texts verified against local Chroma SQLite in read-only mode",
+    "page_numbering": "1-based PDF page indices from page_start/page_end, not printed journal page numbers",
+    "sources": [
+      {
+        "source": "s41523-020-00197-2.pdf",
+        "chunk_count": 476
+      },
+      {
+        "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+        "chunk_count": 229
+      },
+      {
+        "source": "journal.pone.0297260 (1).pdf",
+        "chunk_count": 235
+      }
+    ]
+  },
+  "annotation_policy": {
+    "relevance": "Each listed chunk contributes evidence to at least one expected answer point; several chunks may be needed for the complete answer.",
+    "completeness": "Provisional positive labels only; unlabeled chunks are unjudged, not confirmed negatives. Human review must complete the relevant set before formal Recall/MRR.",
+    "freeze": "Not frozen. Approve every query, record reviewer/date and issue a new dataset version before use as a held-out benchmark.",
+    "safety": "Historical biomedical paper comprehension only, not medical advice. Do not convert experimental hypotheses or toxic compounds into treatment recommendations."
+  },
+  "queries": [
+    {
+      "id": "paper-q001",
+      "query": "根据 2020 年 TNBC 分类综述，TNBC 的受体定义是什么，约占乳腺癌的多少比例？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "概念事实",
+      "relevant_chunk_ids": [
+        "paper-5"
+      ],
+      "relevant_pages": [
+        1
+      ],
+      "expected_answer_points": [
+        "ER、PR、HER2 缺乏表达。",
+        "文中比例为 15%–20%。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q002",
+      "query": "TNBC 分类综述引用 Lehmann 的早期研究时，列出了哪七个转录组亚型？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "概念事实",
+      "relevant_chunk_ids": [
+        "paper-18",
+        "paper-19"
+      ],
+      "relevant_pages": [
+        1,
+        2
+      ],
+      "expected_answer_points": [
+        "BL1、BL2、IM、M、MSL、LAR、UNS。"
+      ],
+      "review_status": "pending",
+      "review_notes": "跨页断句；不要与后续四亚型分类混淆。"
+    },
+    {
+      "id": "paper-q003",
+      "query": "综述中 BL1 与 BL2 的主要通路特征有什么区别？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "比较归纳",
+      "relevant_chunk_ids": [
+        "paper-19"
+      ],
+      "relevant_pages": [
+        2
+      ],
+      "expected_answer_points": [
+        "BL1 富集细胞周期调节和 DNA 损伤应答。",
+        "BL2 富集生长因子、代谢通路，肌上皮标志物表达增加。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q004",
+      "query": "综述如何定义 BRCAness，它为什么与 PARP 抑制剂敏感性有关？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "机制解释",
+      "relevant_chunk_ids": [
+        "paper-94",
+        "paper-95"
+      ],
+      "relevant_pages": [
+        7
+      ],
+      "expected_answer_points": [
+        "无胚系 BRCA1/2 突变也可存在同源重组修复缺陷。",
+        "PARP 抑制剂敏感性与合成致死有关。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q005",
+      "query": "根据综述，IMpassion130 使用哪种检测及阈值定义 PD-L1 阳性？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-118"
+      ],
+      "relevant_pages": [
+        8
+      ],
+      "expected_answer_points": [
+        "采用 IHC SP142 检测。",
+        "肿瘤浸润免疫细胞 PD-L1 表达阈值为 ≥1%。"
+      ],
+      "review_status": "pending",
+      "review_notes": "仅针对综述中的历史试验定义，不作为现行治疗建议。"
+    },
+    {
+      "id": "paper-q006",
+      "query": "综述所述转移性 TNBC 研究中，高 TMB 的阈值及其与 PFS、OS 的关系是什么？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "结果解读",
+      "relevant_chunk_ids": [
+        "paper-146"
+      ],
+      "relevant_pages": [
+        9
+      ],
+      "expected_answer_points": [
+        "高 TMB 定义为 ≥6 mutations/megabase。",
+        "与较长 PFS 显著相关，但未与 OS 显著相关。"
+      ],
+      "review_status": "pending",
+      "review_notes": "保持该研究的限定，不外推为通用阈值。"
+    },
+    {
+      "id": "paper-q007",
+      "query": "综述如何总结 KEYNOTE-086 和 KEYNOTE-173 中 TILs 与治疗反应的关系？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "结果解读",
+      "relevant_chunk_ids": [
+        "paper-150",
+        "paper-151"
+      ],
+      "relevant_pages": [
+        9
+      ],
+      "expected_answer_points": [
+        "KEYNOTE-086 中 TILs 水平是反应的独立预测因素。",
+        "KEYNOTE-173 队列中治疗前和治疗中的间质 TILs 与 pCR 显著相关。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q008",
+      "query": "TNBC 综述中 ABC 转运体如何造成化疗耐药，列出了哪些转运体？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "机制解释",
+      "relevant_chunk_ids": [
+        "paper-190",
+        "paper-191"
+      ],
+      "relevant_pages": [
+        10
+      ],
+      "expected_answer_points": [
+        "通过 ATP 依赖的药物外排造成耐药。",
+        "列出 ABCC1/MRP1、ABCG2/BCRP 和 ABCC11/MRP8。",
+        "抑制策略面临多转运体覆盖和毒性问题。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q009",
+      "query": "综述中 BRCA 回复突变和启动子甲基化变化如何导致 PARP 抑制剂耐药？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "机制解释",
+      "relevant_chunk_ids": [
+        "paper-202",
+        "paper-203",
+        "paper-204"
+      ],
+      "relevant_pages": [
+        11
+      ],
+      "expected_answer_points": [
+        "BRCA1/2 回复突变可恢复蛋白功能和同源重组修复。",
+        "BRCA1 启动子甲基化丢失可恢复 BRCA1 表达。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q010",
+      "query": "综述描述了哪些不依赖恢复同源重组的复制叉保护机制来解释 PARP 抑制剂耐药？",
+      "source": "s41523-020-00197-2.pdf",
+      "question_type": "机制解释",
+      "relevant_chunk_ids": [
+        "paper-205",
+        "paper-206"
+      ],
+      "relevant_pages": [
+        11
+      ],
+      "expected_answer_points": [
+        "ATR/CHK1 上调可促进复制叉稳定。",
+        "PTIP、EZH2 活性降低可减少核酸酶募集。",
+        "复制叉保护可在未恢复 HR 的情况下产生耐药。"
+      ],
+      "review_status": "pending",
+      "review_notes": "关键结论跨相邻片段，需共同核对。"
+    },
+    {
+      "id": "paper-q011",
+      "query": "Jurj 等人的多次紫杉醇暴露实验使用了哪两种 TNBC 细胞系？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-500"
+      ],
+      "relevant_pages": [
+        2
+      ],
+      "expected_answer_points": [
+        "MDA-MB-231 和 Hs578T。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q012",
+      "query": "Jurj 等人用什么紫杉醇暴露浓度建立模型，并在哪些传代阶段评估？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-505",
+        "paper-506"
+      ],
+      "relevant_pages": [
+        3
+      ],
+      "expected_answer_points": [
+        "多次暴露浓度为 0.1 nM。",
+        "评估 P12 和 P24。"
+      ],
+      "review_status": "pending",
+      "review_notes": "确认 nM 单位，不与后续敏感性测试的 μM 浓度混用。"
+    },
+    {
+      "id": "paper-q013",
+      "query": "Jurj 等人如何测量紫杉醇敏感性和细胞活性，吸光度读取波长是什么？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-507",
+        "paper-508",
+        "paper-509"
+      ],
+      "relevant_pages": [
+        3
+      ],
+      "expected_answer_points": [
+        "采用 MTT 测定并计算 IC50。",
+        "甲臜用 DMSO 溶解，570 nm 读取吸光度。"
+      ],
+      "review_status": "pending",
+      "review_notes": "如审核时补入孵育时间，应核对方法 48 h 与结果段 24 h 的表述差异。"
+    },
+    {
+      "id": "paper-q014",
+      "query": "Jurj 等人的共聚焦三重荧光染色分别标记什么结构、显示什么颜色？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-510",
+        "paper-511"
+      ],
+      "relevant_pages": [
+        3
+      ],
+      "expected_answer_points": [
+        "DAPI：细胞核，蓝色。",
+        "MytoTracker：线粒体，红色。",
+        "Phalloidin：肌动蛋白丝，绿色。"
+      ],
+      "review_status": "pending",
+      "review_notes": "MytoTracker 为片段中的拼写；审核时核对原论文。"
+    },
+    {
+      "id": "paper-q015",
+      "query": "Jurj 等人的突变检测采用什么测序面板和测序平台？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-512",
+        "paper-513"
+      ],
+      "relevant_pages": [
+        3
+      ],
+      "expected_answer_points": [
+        "Ion Ampliseq Cancer Panel Pool v2。",
+        "Ion Torrent PGM Next Generation Sequencer。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q016",
+      "query": "Jurj 等人的基因表达实验采用哪种微阵列，并使用哪些工具解释生物学意义？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-516",
+        "paper-517",
+        "paper-518"
+      ],
+      "relevant_pages": [
+        3
+      ],
+      "expected_answer_points": [
+        "Agilent Whole Human Genome 8×60K microarrays。",
+        "Venny、Panther Gene Ontology 和 String 11.0。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q017",
+      "query": "Jurj 等人的 qRT-PCR 使用哪些内参基因和相对定量方法？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-520",
+        "paper-521"
+      ],
+      "relevant_pages": [
+        4
+      ],
+      "expected_answer_points": [
+        "内参为 B2M 和 GAPDH。",
+        "使用 2^-ΔΔCT 相对定量。"
+      ],
+      "review_status": "pending",
+      "review_notes": "方法段开头被切断，需核对原文公式与上下文。"
+    },
+    {
+      "id": "paper-q018",
+      "query": "Jurj 等人报告的 P12 与 P24 差异表达 mRNA 总数以及上下调数量各是多少？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "结果解读",
+      "relevant_chunk_ids": [
+        "paper-543",
+        "paper-544"
+      ],
+      "relevant_pages": [
+        6
+      ],
+      "expected_answer_points": [
+        "P12：2731，其中下调 1384、上调 1347。",
+        "P24：2406，其中下调 1317、上调 1089。"
+      ],
+      "review_status": "pending",
+      "review_notes": "核对比较组定义；不可把 between 两细胞系的表述擅自改成相对对照。"
+    },
+    {
+      "id": "paper-q019",
+      "query": "Jurj 等人的多次紫杉醇暴露后观察到哪些细胞形态变化？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "结果解读",
+      "relevant_chunk_ids": [
+        "paper-525",
+        "paper-526",
+        "paper-527",
+        "paper-528"
+      ],
+      "relevant_pages": [
+        4
+      ],
+      "expected_answer_points": [
+        "微核、核损伤或碎裂、多核细胞。",
+        "可见肌动蛋白丝破坏、巨细胞或细胞皱缩。"
+      ],
+      "review_status": "pending",
+      "review_notes": "不同细胞系和传代的观察不应全部归为同一组；需人工复核图 2。"
+    },
+    {
+      "id": "paper-q020",
+      "query": "Jurj 等人的 qRT-PCR 验证中，IL-6 表达有哪个不同于总体升高趋势的例外？",
+      "source": "e4343521e6a9c4fddb0438c05deea52f8c3f.pdf",
+      "question_type": "结果解读",
+      "relevant_chunk_ids": [
+        "paper-580",
+        "paper-581"
+      ],
+      "relevant_pages": [
+        12
+      ],
+      "expected_answer_points": [
+        "MDA-MB-231/Pax 在 P12 的 IL-6 相对对照略降低。",
+        "回答需保留这一例外，而非声称所有组均升高。"
+      ],
+      "review_status": "pending",
+      "review_notes": "相邻片段共同构成例外；原文另有 PTSG2 拼写，暂不据此设基因名称题。"
+    },
+    {
+      "id": "paper-q021",
+      "query": "2024 年 PLOS ONE 单细胞研究使用哪个 GEO 数据集、细胞系以及处理和对照条件？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-737",
+        "paper-738"
+      ],
+      "relevant_pages": [
+        3
+      ],
+      "expected_answer_points": [
+        "GSE139129，HCC1143。",
+        "紫杉醇处理 24 h、72 h；DMSO 处理 24 h、72 h 为对照。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q022",
+      "query": "PLOS ONE 单细胞研究如何过滤线粒体比例、归一化、去批次并进行 UMAP 聚类？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-739",
+        "paper-740"
+      ],
+      "relevant_pages": [
+        3
+      ],
+      "expected_answer_points": [
+        "移除线粒体比例 ≥10% 的细胞。",
+        "SCTransform 归一化，PCA 后用 harmony 去批次。",
+        "前 20 个主成分用于 UMAP，聚类 resolution 为 0.04。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q023",
+      "query": "PLOS ONE 研究最终保留多少细胞，标注了哪六个 HCC1143 亚群？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "概念事实",
+      "relevant_chunk_ids": [
+        "paper-756"
+      ],
+      "relevant_pages": [
+        5
+      ],
+      "expected_answer_points": [
+        "2798 个细胞，6 个亚群。",
+        "AKR1C3+、WNT7A+、FAM72B+、RERG+、IDO1+、HEY1+。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q024",
+      "query": "PLOS ONE 研究为何选择 AKR1C3+、IDO1+ 和 HEY1+ 作为紫杉醇耐药相关亚群？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "结果解读",
+      "relevant_chunk_ids": [
+        "paper-757",
+        "paper-758"
+      ],
+      "relevant_pages": [
+        5
+      ],
+      "expected_answer_points": [
+        "这三个亚群在处理 72 h 的比例高于 24 h。",
+        "AKR1C3+ 的比例随处理时间延长显著增加。"
+      ],
+      "review_status": "pending",
+      "review_notes": "这是作者基于比例变化的选择依据，不能当作已完成因果验证。"
+    },
+    {
+      "id": "paper-q025",
+      "query": "PLOS ONE 研究中 AKR1C3+、IDO1+、HEY1+ 亚群的 hallmark 通路活化各有什么特征？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "比较归纳",
+      "relevant_chunk_ids": [
+        "paper-760",
+        "paper-761"
+      ],
+      "relevant_pages": [
+        5
+      ],
+      "expected_answer_points": [
+        "AKR1C3+：凋亡、胆汁酸代谢、干扰素反应、血红素代谢和 ROS。",
+        "IDO1+：激素反应、胆固醇稳态、IL2-STAT5、KRAS signaling up、EMT。",
+        "HEY1+：mTORC1、缺氧、UV response up、TGF-β。"
+      ],
+      "review_status": "pending",
+      "review_notes": "跨片段枚举，需确认每条通路与亚群归属，未核对热图数值。"
+    },
+    {
+      "id": "paper-q026",
+      "query": "PLOS ONE 研究中 AKR1C3+ 细胞沿拟时序变化时，CXCL8、IFIT2、SOD2、EIF5A、MKI67 分别如何变化？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "结果解读",
+      "relevant_chunk_ids": [
+        "paper-770"
+      ],
+      "relevant_pages": [
+        7
+      ],
+      "expected_answer_points": [
+        "CXCL8、IFIT2、SOD2 随拟时序升高。",
+        "EIF5A 和 MKI67 随拟时序降低。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q027",
+      "query": "PLOS ONE 研究的 SCENIC 分析中 GENIE3、RcisTarget 和 AUCell 分别承担什么职责？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "方法设计",
+      "relevant_chunk_ids": [
+        "paper-749",
+        "paper-750",
+        "paper-751"
+      ],
+      "relevant_pages": [
+        4
+      ],
+      "expected_answer_points": [
+        "GENIE3 筛选与转录因子共表达的基因。",
+        "RcisTarget 分析 motif 并识别 regulon。",
+        "AUCell 评估 regulon 活性。"
+      ],
+      "review_status": "pending",
+      "review_notes": "需人工确认语义相关性、证据覆盖及同义/重叠片段是否遗漏。"
+    },
+    {
+      "id": "paper-q028",
+      "query": "PLOS ONE 研究如何描述 STAT1、CEBPB 和 IRF7 调控网络涉及的生物学过程？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "机制解释",
+      "relevant_chunk_ids": [
+        "paper-785",
+        "paper-786",
+        "paper-787"
+      ],
+      "relevant_pages": [
+        9
+      ],
+      "expected_answer_points": [
+        "STAT1：抗病毒防御、IFN-γ 反应、I 型干扰素信号。",
+        "CEBPB：细胞增殖调控、炎症反应和凋亡。",
+        "IRF7：抗病毒防御、干扰素反应及 NF-kappaB 正调控。"
+      ],
+      "review_status": "pending",
+      "review_notes": "网络富集结果与因果机制有区别；跨片段核对，不表述为已验证靶点。"
+    },
+    {
+      "id": "paper-q029",
+      "query": "PLOS ONE 单细胞研究承认了什么验证局限，并计划怎样验证耐药相关转录因子？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "局限性",
+      "relevant_chunk_ids": [
+        "paper-818",
+        "paper-819"
+      ],
+      "relevant_pages": [
+        15
+      ],
+      "expected_answer_points": [
+        "尚缺乏实验验证转录因子功能。",
+        "计划测表达、沉默高表达转录因子，再用不同紫杉醇浓度测细胞毒性和 IC50。"
+      ],
+      "review_status": "pending",
+      "review_notes": "原文写作 web experiment，结合上下文理解为实验验证缺失，须人工核对。"
+    },
+    {
+      "id": "paper-q030",
+      "query": "PLOS ONE 论文结论列出的 STAT1、CEBPB、IRF7 五种共同候选抑制物是什么？这些是否已完成临床验证？",
+      "source": "journal.pone.0297260 (1).pdf",
+      "question_type": "概念事实",
+      "relevant_chunk_ids": [
+        "paper-818",
+        "paper-819",
+        "paper-820"
+      ],
+      "relevant_pages": [
+        15
+      ],
+      "expected_answer_points": [
+        "论文列出 Genistein、bisphenol A、Benzopyrene、Tetrachlorodibenzodioxin、monomethylarsonous acid。",
+        "这是论文报告的候选线索，功能与实际作用仍待验证，不能作为临床用药建议。"
+      ],
+      "review_status": "pending",
+      "review_notes": "高优先级审核：含有毒化合物；只能陈述论文结果，不可输出治疗推荐。"
+    }
+  ]
+}

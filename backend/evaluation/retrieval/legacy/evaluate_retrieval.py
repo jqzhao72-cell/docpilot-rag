@@ -5,7 +5,7 @@ from rag.retrieval import Retriever
 from rag.reranker import Reranker
 
 
-EVAL_FILE = Path("evaluation/rag_eval.json")
+EVAL_FILE = Path(__file__).resolve().parents[2] / "datasets" / "legacy" / "rag_eval.json"
 
 USER_ROLE = "hr"
 
@@ -403,4 +403,3 @@ print(
     f"Chunk Recall@5: "
     f"{reranker_chunk_recall_5:.2%}"
 )
- 

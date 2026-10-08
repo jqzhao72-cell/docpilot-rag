@@ -24,7 +24,7 @@ const scopeCount = computed(() => new Set(documents.value.map((item) => item.rol
 async function refresh() {
   loadingDocuments.value = true
   try {
-    documents.value = await listDocuments(auth.user.user_id)
+    documents.value = await listDocuments('company')
   } catch (requestError) {
     error.value = requestError.message
   } finally {
@@ -48,7 +48,6 @@ async function upload() {
     const result = await uploadDocument({
       file: selectedFile.value,
       role: documentRole.value,
-      userId: auth.user.user_id,
     })
     notice.value = `${result.filename} 已完成解析并写入 ${result.chunks} 个 chunks。`
     selectedFile.value = null
@@ -101,8 +100,8 @@ onMounted(refresh)
             <label class="drop-zone">
               <input type="file" accept=".pdf,.docx,.txt" @change="chooseFile" />
               <span class="upload-icon">⇧</span>
-              <strong>{{ selectedFile?.name || '选择或拖入文档' }}</strong>
-              <small>PDF / DOCX / TXT</small>
+            <strong>{{ selectedFile?.name || '选择文档' }}</strong>
+            <small>PDF / DOCX / TXT · 最大 25 MB · 同名文档不会覆盖</small>
             </label>
             <label class="field-label">
               文档权限

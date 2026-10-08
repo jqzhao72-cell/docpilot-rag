@@ -179,9 +179,11 @@ npm run dev
 | Documents | 文档搜索、权限展示和删除 |
 | History | 用户历史问答搜索与展开 |
 
-登录状态由 Pinia 管理，Vue Router 提供基本路由保护。Chat Sources 展示 `source`、页码范围、`section`、`chunk_type` 和原文片段。
+登录使用服务端可撤销 Bearer 会话，Pinia 保存经 `/users/me` 校验的用户信息，Vue Router 校验登录与管理员路由。Chat 可选择企业或论文知识库，Sources 展示来源、页码、章节和原文。管理员拥有用户管理、文档权限设置和全部历史审计页面。
 
 ## 主要 API
+
+完整请求字段、响应示例、权限、状态码与 Swagger 操作见 [FastAPI 完整接口参考](docs/api-reference.md)。
 
 | 方法 | 路径 | 功能 |
 | --- | --- | --- |
@@ -189,18 +191,26 @@ npm run dev
 | `POST` | `/login` | 登录 |
 | `PUT` | `/users/{user_id}/role` | 管理员修改角色 |
 | `POST` | `/conversations` | 创建会话 |
-| `GET` | `/conversations/user/{user_id}` | 用户会话列表 |
+| `GET` | `/conversations` | 当前用户会话列表 |
 | `GET` | `/conversations/{conversation_id}/messages` | 会话消息 |
 | `POST` | `/chat` | 完整 PaperRAGPipeline 问答 |
-| `GET` | `/history/user/{user_id}` | 用户问答历史 |
+| `GET` | `/history` | 当前用户问答历史，派生自会话消息 |
 | `GET` | `/documents` | 按权限列出文档 |
 | `DELETE` | `/documents/{filename}` | 按权限删除文档 |
-| `POST` | `/upload` | 上传、解析、切分并写入知识库 |
+| `POST` | `/documents` | 上传、解析、切分并写入企业知识库 |
+| `GET` | `/users/me` | 当前身份 |
+| `GET` | `/users` | 管理员用户列表 |
+| `POST` | `/logout` | 撤销当前登录凭证 |
+| `GET` | `/admin/history` | 管理员历史审计 |
+| `GET` | `/documents/{filename}/content` | 文档正文 |
+| `GET` | `/documents/{filename}/download` | 企业文档下载 |
+| `PUT` | `/documents/{filename}/role` | 管理员设置文档权限 |
+| `PATCH/DELETE` | `/conversations/{id}` | 重命名/删除自己的会话 |
 
 `POST /chat` 返回：
 
 ```text
-answer + sources + retrieval_results + timings
+conversation_id + question + answer + sources + timings
 ```
 
 ## 测试与诊断
@@ -217,10 +227,10 @@ cd backend
 真实模型与索引回归：
 
 ```powershell
-..\.venv\Scripts\python.exe -m scripts.test_paper_retrieval
-..\.venv\Scripts\python.exe -m scripts.test_hybrid_retrieval
-..\.venv\Scripts\python.exe -m scripts.test_paper_reranker
-..\.venv\Scripts\python.exe -m scripts.test_paper_rag_pipeline
+..\.venv\Scripts\python.exe -m evaluation.retrieval.paper_dense
+..\.venv\Scripts\python.exe -m evaluation.retrieval.paper_hybrid
+..\.venv\Scripts\python.exe -m evaluation.benchmarks.paper_reranker
+..\.venv\Scripts\python.exe -m evaluation.rag.paper_pipeline
 ```
 
 前端构建：
@@ -232,6 +242,7 @@ npm run build
 
 ## 文档导航
 
+- [FastAPI 完整接口参考](docs/api-reference.md)
 - [后端准备与运行](backend/README.md)
 - [RAG 核心模块](backend/rag/README.md)
 - [FastAPI 应用层](backend/app/README.md)
@@ -245,7 +256,8 @@ npm run build
 - 当前以文本 RAG 为主；能够解析 Figure/Table 不等于最终回答模型原生理解图片。
 - 本地模型、文档、Chroma 和 SQLite 不包含在仓库中，新环境需要单独准备。
 - 检索和生成质量需要结合固定评估集与人工审查，不能只用单次示例判断。
-- 当前登录是本地项目级实现，生产部署前还需要密码哈希、Token、审计和更完整的安全策略。
+- 密码已采用 scrypt，认证使用 8 小时可撤销 Bearer 会话；具体权限、迁移、备份及验证范围见 [前后端整改记录](docs/api-remediation.md)。
+- 企业库上传与 Chat 已打通；论文中缺少 role 的旧内容暂按 admin 级保护，可由管理员在文档页明确发布。旧数据库首次启动会先备份再迁移，原密码无需更改。
 
 ## License
 

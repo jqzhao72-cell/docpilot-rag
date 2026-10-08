@@ -30,6 +30,9 @@ chroma_db/
 # Local databases and model weights
 app.db
 app.db-*
+backend/backups/
+backend/.knowledge.lock
+backend/.migration.lock
 models/
 
 # Test and build output

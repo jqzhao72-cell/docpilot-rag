@@ -290,6 +290,11 @@ h1, h2, h3 { font-family: 'Manrope', 'PingFang SC', sans-serif; }
   .content-grid.two-columns { grid-template-columns: 1fr; }
 }
 
+.document-preview { margin-top: 20px; padding: 24px; }
+.document-preview article { border-top: 1px solid #e5e7eb; padding-block: 16px; }
+.document-preview p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.action-cell .text-button { margin-right: 10px; }
+
 @media (max-width: 720px) {
   .login-page { grid-template-columns: 1fr; }
   .login-hero { display: none; }

@@ -1,37 +1,40 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-
-import { login as loginRequest } from '../api/auth'
-
-const STORAGE_KEY = 'docpilot_user'
-
-function restoreUser() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY))
-  } catch {
-    localStorage.removeItem(STORAGE_KEY)
-    return null
-  }
-}
+import { TOKEN_KEY } from '../api/client'
+import { login as loginRequest, logout as logoutRequest, getCurrentUser } from '../api/auth'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref(restoreUser())
-  const isAuthenticated = computed(() => Boolean(user.value?.user_id))
+  const user = ref(null)
+  const isAuthenticated = computed(() => Boolean(user.value && sessionStorage.getItem(TOKEN_KEY)))
+  let initializing
+  localStorage.removeItem('docpilot_user')
+
+  function clear() {
+    user.value = null
+    sessionStorage.removeItem(TOKEN_KEY)
+  }
+  window.addEventListener('docpilot-session-expired', clear)
+
+  async function initialize() {
+    if (!sessionStorage.getItem(TOKEN_KEY)) return clear()
+    if (!initializing) {
+      initializing = getCurrentUser().then((data) => { user.value = data })
+        .finally(() => { initializing = null })
+    }
+    try { await initializing } catch (error) {
+      if (error.status === 401 || error.status === 403) clear()
+      else throw error
+    }
+  }
 
   async function login(credentials) {
     const data = await loginRequest(credentials)
-    if (!data?.user_id) {
-      throw new Error(data?.error || '用户名或密码错误')
-    }
-    user.value = data
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-    return data
+    sessionStorage.setItem(TOKEN_KEY, data.access_token)
+    user.value = { user_id: data.user_id, username: data.username, role: data.role }
+    return user.value
   }
-
-  function logout() {
-    user.value = null
-    localStorage.removeItem(STORAGE_KEY)
+  async function logout() {
+    try { await logoutRequest() } finally { clear() }
   }
-
-  return { user, isAuthenticated, login, logout }
+  return { user, isAuthenticated, initialize, login, logout }
 })

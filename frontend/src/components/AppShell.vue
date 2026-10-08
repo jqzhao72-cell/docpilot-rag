@@ -13,9 +13,8 @@ const navigation = [
   { to: '/history', label: '问答历史', icon: '◷' },
 ]
 
-function logout() {
-  auth.logout()
-  router.push('/login')
+async function logout() {
+  try { await auth.logout() } finally { router.push('/login') }
 }
 </script>
 
@@ -31,6 +30,7 @@ function logout() {
       </div>
 
       <nav class="global-nav" aria-label="主导航">
+        <RouterLink v-if="auth.user?.role === 'admin'" to="/users"><span>♙</span>用户管理</RouterLink>
         <RouterLink v-for="item in navigation" :key="item.to" :to="item.to">
           <span class="nav-icon">{{ item.icon }}</span>
           {{ item.label }}

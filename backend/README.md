@@ -29,11 +29,17 @@ cd backend
 ..\.venv\Scripts\python.exe -m unittest tests.test_permissions -v
 
 # Retrieval/RAG 手工回归
-..\.venv\Scripts\python.exe -m scripts.test_hybrid_retrieval
-..\.venv\Scripts\python.exe -m scripts.test_paper_rag_pipeline
+..\.venv\Scripts\python.exe -m evaluation.retrieval.paper_hybrid
+..\.venv\Scripts\python.exe -m evaluation.rag.paper_pipeline
 ```
 
 接口文档默认位于 <http://127.0.0.1:8000/docs>。
+
+仓库文档：
+
+- [FastAPI 完整接口参考](../docs/api-reference.md)：逐接口请求、响应、权限和错误码。
+- [FastAPI 应用结构](app/README.md)：路由、认证、授权和数据流模块职责。
+- [前后端整改记录](../docs/api-remediation.md)：迁移、备份和兼容策略。
 
 ## 目录职责
 
@@ -41,7 +47,7 @@ cd backend
 - `rag/`：解析、切分、Embedding、Dense/BM25、RRF、Reranker、Prompt、LLM 和 Pipeline。
 - `scripts/`：需要人工执行的建库、诊断和模型脚本。
 - `tests/`：自动化单元与回归测试。
-- `evaluation/`：正式检索评估代码和固定评估集。
+- `evaluation/`：分层评估入口、版本化数据和报告；当前论文集为 30 条待审核候选，见 [Evaluation 说明](evaluation/README.md)。
 - `examples/`：教学示例；`streamlit_app.py` 是保留的旧 UI，不属于正式前端。
 
 ## 代码依赖方向

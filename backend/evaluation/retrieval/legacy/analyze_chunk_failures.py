@@ -4,7 +4,7 @@ from pathlib import Path
 from rag.retrieval import Retriever
 
 
-EVAL_FILE = Path("evaluation/rag_eval.json")
+EVAL_FILE = Path(__file__).resolve().parents[2] / "datasets" / "legacy" / "rag_eval.json"
 
 USER_ROLE = "hr"
 

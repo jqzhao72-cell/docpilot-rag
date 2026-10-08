@@ -24,6 +24,11 @@ async function submit() {
     return
   }
   loading.value = true
+  if (mode.value === 'register' && password.value.length < 8) {
+    error.value = '注册密码至少需要 8 个字符。'
+    loading.value = false
+    return
+  }
   try {
     if (mode.value === 'register') {
       const result = await register({ username: username.value.trim(), password: password.value })

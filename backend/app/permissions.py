@@ -1,8 +1,4 @@
-"""Small, centralized role-based permission helpers.
-
-The caller supplies a database session so these helpers remain easy to replace
-with JWT-backed authentication later without coupling permissions to FastAPI.
-"""
+"""Central role policy. HTTP identity is resolved by app.auth, never client IDs."""
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
