@@ -38,6 +38,7 @@ joblib==1.5.3
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 kubernetes==36.0.3
+langgraph==1.2.16
 lxml==6.1.1
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3

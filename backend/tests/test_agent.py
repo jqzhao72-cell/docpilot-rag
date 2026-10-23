@@ -1,6 +1,10 @@
 """Agent contracts: tool protocol, bounded work, citation ledger and shared retrieval."""
 import copy
+from concurrent.futures import ThreadPoolExecutor
+import ast
+import inspect
 import json
+import textwrap
 import time
 import unittest
 from unittest.mock import patch
@@ -48,6 +52,16 @@ def found(query, top_k):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_langgraph_topology_and_harness_has_no_agent_loop(self):
+        harness = Harness(FakeModel([response('你好！')]), found)
+        graph = harness.graph.get_graph()
+        self.assertTrue({'agent_node', 'tool_node', 'finalize_node'}.issubset(graph.nodes))
+        edges = {(edge.source, edge.target) for edge in graph.edges}
+        self.assertIn(('__start__', 'agent_node'), edges)
+        self.assertIn(('finalize_node', '__end__'), edges)
+        tree = ast.parse(textwrap.dedent(inspect.getsource(Harness.run)))
+        self.assertFalse(any(isinstance(node, (ast.For, ast.While)) for node in ast.walk(tree)))
+
     def test_one_search_real_source_and_tool_call_id(self):
         model = FakeModel([response(calls=[call()]), response('GENIE3 推断调控网络[1]。')])
         result = Harness(model, found).run('GENIE3 有什么职责？')
@@ -85,6 +99,8 @@ class HarnessTests(unittest.TestCase):
         tools = [m for m in model.calls[-1][0] if m['role'] == 'tool']
         self.assertEqual([m['tool_call_id'] for m in tools], ['c0', 'c1', 'c2'])
         self.assertEqual(json.loads(tools[-1]['content'])['error'], 'search_limit')
+        self.assertEqual([step['status'] for step in result['tool_trace']], ['ok', 'ok', 'search_limit'])
+        self.assertEqual(result['stop_reason'], 'completed')
 
     def test_invalid_parameters_cannot_set_identity_or_scope(self):
         for args in ({'query': 'x', 'user_id': 3}, {'query': 'x', 'role': 'admin'},
@@ -153,6 +169,38 @@ class HarnessTests(unittest.TestCase):
         model = FakeModel([response(calls=[call(), call()])])
         result = Harness(model, found).run('x')
         self.assertEqual(result['stop_reason'], 'invalid_tool_call')
+
+    def test_model_budget_rejects_late_tool_call_without_execution(self):
+        model = FakeModel([response(calls=[call('c1')]), response(calls=[call('late')])])
+        searches = []
+        def empty(*args):
+            searches.append(args)
+            return {'evidence': []}
+        result = Harness(model, empty, Limits(max_rounds=2)).run('x')
+        self.assertEqual(result['model_call_count'], 2)
+        self.assertEqual(result['retrieval_count'], 1)
+        self.assertEqual(len(searches), 1)
+        self.assertEqual(result['tool_trace'][-1]['status'], 'max_rounds')
+
+    def test_usage_statistics_and_concurrent_state_are_isolated(self):
+        def run(label):
+            evidence = {**EVIDENCE, 'chunk_id': label, 'id': label, 'source': label + '.pdf'}
+            first = response(calls=[call(label)])
+            first['usage'] = {'prompt_tokens': 7, 'completion_tokens': 2}
+            second = response(f'{label}[1]。')
+            second['usage'] = {'prompt_tokens': 11, 'completion_tokens': 3}
+            model = FakeModel([first, second])
+            result = Harness(model, lambda *_: {'evidence': [evidence]}).run(label)
+            return result
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            left, right = list(pool.map(run, ('left', 'right')))
+        self.assertEqual(left['usage'], {'prompt_tokens': 18, 'completion_tokens': 5})
+        self.assertEqual(right['usage'], {'prompt_tokens': 18, 'completion_tokens': 5})
+        self.assertEqual([source['chunk_id'] for source in left['sources']], ['left'])
+        self.assertEqual([source['chunk_id'] for source in right['sources']], ['right'])
+        self.assertEqual(left['retrieval_count'], 1)
+        self.assertEqual(left['model_call_count'], 2)
 
 
 class ModelClientTests(unittest.TestCase):

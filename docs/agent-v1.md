@@ -12,6 +12,7 @@ backend/app/main.py、agent_routes.py（认证依赖、请求/响应模型）
   → app/chat_service.py（会话归属、历史、身份重校验、原子保存）
     → 普通问答：app/knowledge.py → rag/pipeline.py
     → Agent：app/agent_service.py → agent/harness.py
+        → agent/graph.py → agent/nodes.py → agent/state.py
         → agent/model_client.py（OpenAI Python SDK → DeepSeek）
         → agent/tools.py（只读、严格参数验证）
         → app/knowledge.search_evidence（服务端绑定权限语料）
@@ -33,7 +34,10 @@ API 调用共享的业务服务。Agent 与 RAG 在进程内直接调用，没�
 |backend/rag/pipeline.py|复用证据服务，保留普通 RAG 的 Prompt、DeepSeek 和返回字段|
 |backend/app/knowledge.py|读实际知识库，先按权限过滤全部文档，再构建 Dense/BM25；工具结果映射回真实 chunk|
 |backend/agent/model_client.py|模型供应商边界，环境变量、SDK、tools/tool_choice 与消息响应适配|
-|backend/agent/harness.py|预算、超时、tool_call_id、证据账本、引用校验、停止原因|
+|backend/agent/state.py|每次请求独立、可序列化的 AgentState 定义|
+|backend/agent/nodes.py|agent/tool/finalize 节点、预算、超时、引用核验和条件路由|
+|backend/agent/graph.py|构建 StateGraph、注册条件边并 compile，不使用 Checkpointer|
+|backend/agent/harness.py|兼容旧调用入口，准备初始 State、调用 compiled graph、转换结果|
 |backend/agent/tools.py|唯一工具定义、注册和严格参数验证|
 |backend/app/agent_service.py|将可信身份的语料快照绑定给工具；管理模型客户端生命周期|
 |backend/app/chat_service.py|两种问答共用的会话验证、身份重校验、事务写入|
@@ -165,7 +169,7 @@ Agent 的预期收益是自主决定是否检索、改写一次检索及明确�
 
 ## 实现审计与真实验证（2026-10-23）
 
-Agent V1 使用自定义 Harness，不使用 LangGraph。循环入口是 `backend/agent/harness.py` 的 `Harness.run()`；状态保存在单次调用内的 `messages`、`ledger`、`trace`、`seen_calls`、搜索/模型计数器和截止时间中。Harness 从模型响应读取 `tool_calls`，由 `ToolRegistry.validate()` 校验，再由 `ToolRegistry.execute()` 调用服务端绑定的检索闭包；工具结果以相同 `tool_call_id` 追加回消息列表。停止条件也集中在 `Harness.run()`，包括最多 4 个模型轮次、最多 2 次检索、单次/总超时、工具与参数异常、无证据、引用失败和正常完成。仓库没有 `StateGraph`、Node、Conditional Edge、Checkpointer 或 `graph.compile()`。
+提交 `f6b2c26` 的 Agent V1 基线使用自定义 Harness，不使用 LangGraph。循环入口是当时 `backend/agent/harness.py` 的 `Harness.run()`；状态保存在单次调用的局部变量中。以下真实验证数据属于该迁移前基线，用于确认迁移没有改变 API、工具协议、权限和引用约束。
 
 在用户明确授权的受限范围内，使用问题“GENIE3、RcisTarget 和 AUCell 分别承担什么职责？”完成了一次真实 DeepSeek 验证。第一轮模型返回两个 `search_knowledge_base` tool calls；两组参数均通过 `SearchArguments` Schema，未显式传入的 `top_k` 均采用默认值 5。第二轮模型请求携带两个对应的工具结果 ID，随后生成最终回答。检索次数为 2，模型调用次数为 2，未超过限制；`usage` 为 2551 prompt tokens 和 208 completion tokens。最终引用 `[1][3][6]` 分别对应 `paper-750` 第 4 页、`paper-785` 第 9 页和 `paper-743` 第 4 页，并逐项通过当前授权语料校验。
 
@@ -184,3 +188,71 @@ Agent 本次比普通 RAG 多 2062.1 ms，主要收益是模型自主提出两�
 完整脱敏记录保存在 `evaluation/reports/rag/20261023T100024Z-agent-v1/comparison.json`。报告包含逐轮模型耗时、实际工具参数、`tool_call_id` 往返、检索轨迹、usage、来源 chunk 和页码；不包含 API Key、Access Token、密码、真实用户身份、请求头、环境变量或完整 PDF。
 
 本轮运行了仓库中全部包含 `unittest/TestCase` 的后端自动化模块，共 106 项通过；`/chat` 回归和 `/agent/chat` 本地模拟均包含在内，真实 `/agent/chat` 结果见上文。直接执行 `unittest discover` 会导入旧的 `tests/test_parsing_quality.py`，该文件在导入时立即解析 3 个完整 PDF、不是单元测试，约 20 分钟仍未结束，因此中止了这一旧手工入口；本轮按约束未修改它。Vue 模式测试通过，生产构建完成 108 个模块转换并通过。
+
+## LangGraph 等价迁移
+
+当前 Agent V1 已将编排层迁移为正式的 LangGraph `StateGraph`。它仍然是一个 Agent、一个模型和一个只读 RAG Tool，不是多智能体系统；没有 Main Supervisor、Research Subagent 或双模型配置。
+
+```mermaid
+flowchart TD
+    START --> agent_node
+    agent_node -->|有 tool_calls| tool_node
+    agent_node -->|无 tool_calls / 超时 / 错误| finalize_node
+    tool_node -->|仍有检索与模型预算| agent_node
+    tool_node -->|检索耗尽 / 工具错误 / 不可恢复错误| finalize_node
+    finalize_node --> END
+```
+
+`backend/agent/graph.py` 显式创建三个 Node、两组 Conditional Edges，并调用 `compile()`。`backend/agent/harness.py` 只保留兼容入口：准备初始 State、调用 compiled graph、转换原有响应结构；其中不再存在 Agent 主循环。
+
+### AgentState
+
+`backend/agent/state.py` 使用 `TypedDict` 定义每次请求独立的可序列化 State：
+
+|字段|用途|
+|---|---|
+|messages|OpenAI-compatible 消息和完整 tool_call_id 往返|
+|evidence_ledger|本轮真实 chunk、文档、页码和稳定引用序号|
+|tool_trace|脱敏工具步骤、状态、证据数和耗时|
+|retrieval_count / tool_attempt_count|实际检索数和消耗预算的工具尝试数|
+|model_call_count|模型调用预算和统计|
+|max_searches / max_model_calls|本次图调用的固定预算|
+|usage|累计 prompt/completion tokens|
+|started_at / deadline|请求开始时间和总截止时间|
+|model_ms / tool_ms|累计模型与工具耗时|
+|pending_tool_calls / seen_tool_call_ids|节点路由、重复执行保护和协议完整性|
+|final_answer / validated_sources|后端核验后的最终输出|
+|stop_reason / error|稳定停止原因和脱敏错误代码|
+|permission_context|后端认证得到的知识库/角色上下文，不传给模型|
+|question / latest_finish_reason|引用规则判断和供应商完成状态|
+
+模型客户端、ToolRegistry 和授权检索闭包不进入 State，而是由每次请求新建的 Node 闭包持有，因此不会跨请求污染，也不会让模型传入 `user_id`、`role` 或文档范围。
+
+### Node 与条件边
+
+- `agent_node` 调用现有 ModelClient，累计模型调用、usage 和耗时，只解析回答或 tool_calls，不执行检索。
+- `tool_node` 验证工具名和 Pydantic 参数，调用现有 ToolRegistry，维护证据账本并为每个有效 tool_call_id 生成对应工具消息。一次返回多个调用时只执行剩余预算；超出部分收到 `{"error":"search_limit"}`。
+- `finalize_node` 在必要时执行一次禁用工具的最终模型调用，然后核验数字引用，只从 evidence ledger 构造 sources。无证据、超时或异常返回受控说明。
+- `route_after_agent` 根据是否存在 pending tool_calls 选择工具或最终核验。
+- `route_after_tool` 根据检索预算、模型预算和错误状态选择继续思考或最终核验。
+
+检索上限保持 2 次，模型调用上限保持 4 次；默认模型单次超时 40 秒、工具超时 60 秒、总超时 150 秒。后台有界线程仍保证迟到结果不能写回 State。正常答案即使刚好用满两次检索也返回 `completed`；只有真正被额外工具调用阻断且没有正常完成时才保留 `search_limit`，超预算详情继续记录在 trace。
+
+本轮没有启用 Checkpointer。会话、消息、来源与 Agent 摘要已经由现有 SQLAlchemy 数据库原子保存；再引入 LangGraph 持久化会形成两套会话真相源。当前图只处理一次 HTTP 请求内的短生命周期编排。
+
+### 测试与图结构
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m unittest tests.test_agent tests.test_agent_api tests.test_shared_evidence tests.test_answer_resilience
+
+cd ..\frontend
+node tests/chat-mode.test.mjs
+npm.cmd run build
+```
+
+运行时可通过 `harness.graph.get_graph().nodes`、`harness.graph.get_graph().edges` 查看节点和边，也可调用 `harness.graph.get_graph().draw_mermaid()` 输出 Mermaid。测试会断言三个业务节点、START/END 边和 Harness 中不存在 `for/while` 主循环。
+
+迁移后未执行真实 DeepSeek 请求；迁移前的受限真实验证结果保留在上一节。再次向外部模型发送论文证据需要单独明确授权。
+
+迁移前 Agent 定向基线为 33 项通过；迁移后同范围加图结构、模型预算和并发隔离用例为 36 项通过。仓库中全部实际 `unittest/TestCase` 模块共 109 项通过，Vue 模式测试与 108 模块的生产构建通过，`pip check` 无依赖冲突。旧 `tests/test_parsing_quality.py` 仍是导入即执行三个完整 PDF 的手工解析入口，不属于 unittest 集合，本轮没有运行、修改或提交它。

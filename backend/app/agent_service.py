@@ -12,7 +12,10 @@ def answer_agent(question, knowledge_base, user_role, history_text=''):
     model = ModelClient()
     try:
         search = lambda query, top_k: search_evidence(query, top_k, knowledge_base, chunks)
-        result = Harness(model, search).run(question, history_text)
+        result = Harness(model, search, permission_context={
+            'knowledge_base': knowledge_base,
+            'role': user_role,
+        }).run(question, history_text)
         result['timings']['total_ms'] = (monotonic() - started) * 1000
         logging.getLogger(__name__).info('Agent reason=%s retrievals=%d model_calls=%d timings=%s trace=%s',
             result['stop_reason'], result['retrieval_count'], result['model_call_count'],
