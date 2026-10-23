@@ -62,6 +62,11 @@ class MessageResponse(BaseModel):
     content: str
     sources: list[dict]
     created_time: datetime | None
+    tool_trace: list[dict] = Field(default_factory=list)
+    stop_reason: str | None = None
+    timings: dict[str, float] | None = None
+    retrieval_count: int | None = None
+    model_call_count: int | None = None
 
 class HistoryResponse(BaseModel):
     id: int
@@ -96,3 +101,17 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[dict]
     timings: dict[str, float]
+
+class ToolTraceResponse(BaseModel):
+    step: int
+    tool: Literal['search_knowledge_base']
+    status: str
+    evidence_count: int
+    elapsed_ms: float
+
+class AgentChatResponse(ChatResponse):
+    tool_trace: list[ToolTraceResponse]
+    stop_reason: str
+    retrieval_count: int
+    model_call_count: int
+    usage: dict[str, int]

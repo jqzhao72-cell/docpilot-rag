@@ -47,3 +47,10 @@ npm run build
 - `src/stores/`：Pinia 用户状态。
 - `src/views/`：登录、问答、知识库、文档和历史页面。
 - `src/styles/`：全局企业知识库视觉样式。
+
+## Agent 模式
+
+聊天页可切换「普通 RAG / Agent」，分别通过统一 Bearer API client 请求 `/chat` 与 `/agent/chat`。
+消息、会话、历史和来源面板复用原实现，页面仅显示检索步骤摘要。前端不包含模型 SDK 或模型密钥。
+构建：`npm.cmd run build`；模式请求测试：`node tests/chat-mode.test.mjs`。
+后端配置及完整说明见 [Agent V1](../docs/agent-v1.md)。

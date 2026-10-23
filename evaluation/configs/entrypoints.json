@@ -1,0 +1,3 @@
+{
+  "agent-comparison": {"module": "rag.run_agent_comparison", "category": "rag", "capture": false}
+}

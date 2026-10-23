@@ -1,0 +1,8 @@
+*
+!.gitignore
+!retrieval/
+!rag/
+!benchmarks/
+!retrieval/.gitkeep
+!rag/.gitkeep
+!benchmarks/.gitkeep

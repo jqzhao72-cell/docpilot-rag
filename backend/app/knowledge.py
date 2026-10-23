@@ -1,8 +1,10 @@
 """Knowledge-base adapters; scoring, fusion, reranking and generation stay in rag/."""
 from contextlib import contextmanager
+import logging
 from functools import lru_cache
 from pathlib import Path
 from threading import RLock
+from time import monotonic
 from fastapi import HTTPException
 from filelock import FileLock, Timeout
 from app.database import BACKEND_ROOT
@@ -13,13 +15,18 @@ BASES = {"company": ("company_docs", "sentence-transformers/paraphrase-multiling
 _thread_lock = RLock()
 
 @contextmanager
-def knowledge_lock():
-    with _thread_lock:
+def knowledge_lock(timeout=10.0):
+    deadline = monotonic() + timeout
+    if not _thread_lock.acquire(timeout=timeout):
+        raise HTTPException(409, "知识库正在处理其他请求，请稍后重试")
+    try:
         try:
-            with FileLock(str(BACKEND_ROOT / ".knowledge.lock"), timeout=180):
+            with FileLock(str(BACKEND_ROOT / ".knowledge.lock"), timeout=max(0, deadline - monotonic())):
                 yield
         except Timeout:
             raise HTTPException(409, "知识库正在处理其他请求，请稍后重试")
+    finally:
+        _thread_lock.release()
 
 @lru_cache
 def chroma_client():
@@ -85,26 +92,54 @@ class DenseAdapter:
                 for item_id, distance in zip(raw["ids"][0], raw["distances"][0])]
 
 @lru_cache
-def generation_components():
+def reranker_component():
     from rag.reranker import Reranker
-    from rag.llm import DeepSeekLLM
-    return Reranker(), DeepSeekLLM()
+    return Reranker()
 
-def answer_question(question, knowledge_base, user_role, history_text):
-    from rag.pipeline import PaperRAGPipeline
+@lru_cache
+def generation_components():
+    from rag.llm import DeepSeekLLM
+    return reranker_component(), DeepSeekLLM()
+
+def evidence_retriever(knowledge_base, chunks, reranker=None):
+    from rag.evidence import EvidenceRetriever
     from rag.hybrid_retrieval import HybridRetriever
     from rag.sparse_retrieval import BM25Retriever
+    hybrid = HybridRetriever(dense_retriever=DenseAdapter(knowledge_base, chunks),
+                             bm25_retriever=BM25Retriever(chunks=chunks))
+    return EvidenceRetriever(hybrid_retriever=hybrid, reranker=reranker or reranker_component())
+
+def search_evidence(query, top_k, knowledge_base, chunks):
+    """Called with a server-authorized corpus snapshot, never a model-supplied role."""
+    if not chunks:
+        return {'query': query, 'has_evidence': False, 'evidence': []}
+    from rag.pipeline import build_sources
+    # Keep the production final top-5 intact, then limit presentation only.
+    results = evidence_retriever(knowledge_base, chunks).retrieve_evidence(query)['retrieval_results'][:top_k]
+    sources = build_sources(results)
+    by_id = {x['id']: x for x in chunks}
+    evidence = [{**source, 'chunk_id': source['id'], 'text': by_id[source['id']]['text'],
+                 'knowledge_base': knowledge_base} for source in sources if source['id'] in by_id]
+    return {'query': query, 'has_evidence': bool(evidence), 'evidence': evidence}
+
+def answer_question(question, knowledge_base, user_role, history_text):
+    started = monotonic()
+    from rag.pipeline import PaperRAGPipeline
     chunks = visible_chunks(knowledge_base, user_role)
     if not chunks:
         return {"answer": "当前知识库没有您有权访问的内容，请上传文档或联系管理员设置文档权限。",
-                "sources": [], "retrieval_results": [], "timings": {"total_ms": 0}}
-    sparse = BM25Retriever(chunks=chunks)
-    hybrid = HybridRetriever(dense_retriever=DenseAdapter(knowledge_base, chunks), bm25_retriever=sparse)
+                "sources": [], "retrieval_results": [], "timings": {"total_ms": (monotonic() - started) * 1000}}
     reranker, llm = generation_components()
-    pipeline = PaperRAGPipeline(hybrid_retriever=hybrid, reranker=reranker, llm=llm)
+    retriever = evidence_retriever(knowledge_base, chunks, reranker)
+    pipeline = PaperRAGPipeline(hybrid_retriever=retriever.hybrid_retriever, reranker=reranker, llm=llm)
+    preparation_ms = (monotonic() - started) * 1000
     result = pipeline.answer(question, metadata_filter={"role": {"$in": get_allowed_document_roles(user_role)}},
                              history_text=history_text)
     by_id = {x["id"]: x for x in chunks}
     result["sources"] = [{**x, "text": by_id.get(x["id"], {}).get("text", ""),
                            "knowledge_base": knowledge_base} for x in result["sources"]]
+    # Include corpus preparation and cold model loads previously omitted from total_ms.
+    # Do not log queries, evidence text, credentials or generated answers.
+    result["timings"]["total_ms"] = (monotonic() - started) * 1000
+    logging.getLogger(__name__).info("RAG preparation_ms=%.1f timings=%s", preparation_ms, result["timings"])
     return result

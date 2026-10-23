@@ -4,3 +4,8 @@ export async function askQuestion(payload) {
   const { data } = await apiClient.post('/chat', payload)
   return data
 }
+
+export async function askAgentQuestion(payload) {
+  const { data } = await apiClient.post('/agent/chat', payload)
+  return data
+}

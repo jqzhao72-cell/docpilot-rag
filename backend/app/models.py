@@ -33,6 +33,7 @@ class Message(Base):
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     sources = Column(Text)
+    agent_metadata = Column(Text)
     created_time = Column(DateTime, default=datetime.utcnow)
 
 class ChatHistory(Base):

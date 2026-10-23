@@ -17,8 +17,24 @@ def upgrade(engine):
     database = engine.url.database
     if database and database != ":memory:":
         with FileLock(str(Path(database).parent / ".migration.lock"), timeout=120):
-            return _upgrade(engine)
-    return _upgrade(engine)
+            _upgrade(engine)
+            return _upgrade_agent_metadata(engine)
+    _upgrade(engine)
+    return _upgrade_agent_metadata(engine)
+
+def _upgrade_agent_metadata(engine):
+    """Add compact Agent metadata without rewriting any existing messages."""
+    if 'agent_metadata' in {x['name'] for x in inspect(engine).get_columns('messages')}:
+        return
+    database = engine.url.database
+    if database and database != ':memory:':
+        directory = Path(database).parent / 'backups'
+        directory.mkdir(exist_ok=True)
+        target = directory / ('app-agent-' + datetime.utcnow().strftime('%Y%m%d-%H%M%S-%f') + '.sqlite3')
+        with closing(sqlite3.connect(database)) as source, closing(sqlite3.connect(target)) as backup:
+            source.backup(backup)
+    with engine.begin() as connection:
+        connection.execute(text('ALTER TABLE messages ADD COLUMN agent_metadata TEXT'))
 
 def _upgrade(engine):
     inspector = inspect(engine)
@@ -36,6 +52,8 @@ def _upgrade(engine):
             source.backup(backup)
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
+        if 'agent_metadata' not in {x['name'] for x in inspect(conn).get_columns('messages')}:
+            conn.execute(text('ALTER TABLE messages ADD COLUMN agent_metadata TEXT'))
         columns = {x["name"] for x in inspect(conn).get_columns("conversations")}
         if "knowledge_base" not in columns:
             # Existing conversations used the old paper pipeline.

@@ -25,6 +25,14 @@ def parse_sources(value):
     except (ValueError, TypeError):
         return []
 
+def agent_metadata(value):
+    try:
+        payload = json.loads(value or '{}')
+        return {key: payload[key] for key in ('tool_trace', 'stop_reason', 'timings',
+                'retrieval_count', 'model_call_count') if key in payload} if isinstance(payload, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
 @router.post("/conversations", status_code=201, response_model=ConversationResponse)
 def create_conversation(data: ConversationCreate, user=Depends(get_current_user), db=Depends(get_db)):
     item = Conversation(user_id=user.id, **data.model_dump())
@@ -41,7 +49,8 @@ def get_conversations(user=Depends(get_current_user), db=Depends(get_db)):
 def get_messages(conversation_id: int, user=Depends(get_current_user), db=Depends(get_db)):
     owned_conversation(db, conversation_id, user)
     return [{"id": x.id, "conversation_id": x.conversation_id, "role": x.role,
-             "content": x.content, "sources": parse_sources(x.sources), "created_time": x.created_time}
+             "content": x.content, "sources": parse_sources(x.sources), "created_time": x.created_time,
+             **agent_metadata(x.agent_metadata)}
             for x in db.query(Message).filter_by(conversation_id=conversation_id).order_by(Message.created_time, Message.id)]
 
 @router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)

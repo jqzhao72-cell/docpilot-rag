@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
 
-import { askQuestion } from '../api/chat'
+import { requestForMode } from '../api/chatMode'
 import {
   createConversation,
   getConversationMessages,
@@ -23,6 +23,7 @@ const loadingMessages = ref(false)
 const error = ref('')
 const messageList = ref(null)
 const knowledgeBase = ref('company')
+const chatMode = ref('rag')
 let selectionVersion = 0
 
 const activeConversation = computed(() =>
@@ -104,12 +105,13 @@ async function sendQuestion() {
     messages.value.push({ role: 'user', content: prompt, sources: [] })
     await scrollToBottom()
 
-    const result = await askQuestion({
+    const result = await requestForMode(chatMode.value)({
       question: prompt,
       conversation_id: conversationId,
     })
     const sources = result.sources || []
-    messages.value.push({ role: 'assistant', content: result.answer, sources })
+    messages.value.push({ role: 'assistant', content: result.answer, sources,
+      tool_trace: result.tool_trace || [], stop_reason: result.stop_reason })
     activeSources.value = sources
     timings.value = result.timings || null
     await refreshConversations()
@@ -157,6 +159,9 @@ onMounted(async () => {
   <AppShell>
     <template #title>智能问答</template>
     <template #actions>
+      <select v-model="chatMode" aria-label="问答模式" :disabled="loading || loadingMessages">
+        <option value="rag">普通 RAG</option><option value="agent">Agent</option>
+      </select>
       <select v-model="knowledgeBase" :disabled="loading || Boolean(activeConversationId)">
         <option value="company">企业知识库</option><option value="paper">论文知识库</option>
       </select>
@@ -223,6 +228,11 @@ onMounted(async () => {
             <div class="message-body">
               <div class="message-role">{{ message.role === 'user' ? 'You' : 'DocPilot' }}</div>
               <p>{{ message.content }}</p>
+              <div v-if="message.tool_trace?.length" class="agent-steps" aria-label="检索步骤">
+                <small v-for="step in message.tool_trace" :key="step.step">
+                  检索 {{ step.step }}：{{ step.status === 'ok' ? `找到 ${step.evidence_count} 条证据` : step.status === 'no_evidence' ? '未找到证据' : '未能完成检索' }}
+                </small>
+              </div>
               <button v-if="message.sources?.length" class="source-link">
                 查看 {{ message.sources.length }} 条来源证据 →
               </button>
@@ -257,3 +267,7 @@ onMounted(async () => {
     </div>
   </AppShell>
 </template>
+
+<style scoped>
+.agent-steps { display: flex; flex-wrap: wrap; gap: 6px 14px; color: #386956; margin: 8px 0; }
+</style>
